@@ -23,7 +23,7 @@
   "crons": [
     {
       "path": "/api/preloadCache",
-      "schedule": "0 * * * *"
+      "schedule": "0 1 * * *"
     }
   ],
   "env": {

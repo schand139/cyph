@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { get as getBlobData } from '@vercel/blob';
 
 // Cypher master wallet address
 const CYPHER_MASTER_WALLET = '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
@@ -14,6 +15,10 @@ const __dirname = dirname(__filename);
 
 // Check if we're running in Vercel environment
 const isVercel = process.env.VERCEL === '1';
+
+// Blob cache key for the Vercel Blob storage
+// This should match the path you used when uploading to the Blob storage
+const BLOB_CACHE_KEY = 'volume-0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD-2025.json';
 
 // In-memory cache for API responses (short-lived)
 const apiResponseCache = new Map();
@@ -43,6 +48,38 @@ export default async function handler(req, res) {
     if (apiResponseCache.has(apiCacheKey)) {
       console.log(`Using in-memory cache for ${apiCacheKey}`);
       return res.status(200).json(apiResponseCache.get(apiCacheKey));
+    }
+    
+    // Special case for Vercel production - use Blob storage directly if available
+    if (isVercel) {
+      try {
+        console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
+        const blob = await getBlobData(BLOB_CACHE_KEY);
+        
+        if (blob) {
+          const blobData = JSON.parse(await blob.text());
+          console.log(`Successfully retrieved data from Blob storage`);
+          
+          // Process the data to fill in missing weeks
+          const processedData = processVolumeData(blobData.data.data, year);
+          
+          const result = {
+            daily: processedData.daily || [],
+            weekly: processedData.weekly || [],
+            monthly: processedData.monthly || [],
+            source: 'blob-storage',
+            period
+          };
+          
+          // Cache the API response in memory
+          apiResponseCache.set(apiCacheKey, result);
+          
+          return res.status(200).json(result);
+        }
+      } catch (error) {
+        console.warn(`Error fetching from Blob storage: ${error.message}. Falling back to standard cache.`);
+        // Continue to standard cache checking
+      }
     }
     
     // Check persistent cache (file or KV)
