@@ -6,6 +6,7 @@ A web application that visualizes and analyzes crypto card load patterns on the 
 
 - **USD Load Volume Visualization**: Daily, weekly, and monthly USD load volume based on tokens received by the Cypher master wallet.
 - **User Wallet Analysis**: For any given wallet address, shows their top 10 counterparties based on transaction count, with protocol identification.
+- **Blockchain Data Caching**: Efficient caching system that stores transaction data to improve performance.
 
 ## Tech Stack
 
@@ -14,6 +15,7 @@ A web application that visualizes and analyzes crypto card load patterns on the 
 - **Charts**: Chart.js with react-chartjs-2
 - **Blockchain Interaction**: viem
 - **Date Handling**: date-fns
+- **Caching**: File-based (local) and Vercel KV (production)
 
 ## Setup Instructions
 

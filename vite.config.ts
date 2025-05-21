@@ -8,9 +8,9 @@ export default defineConfig({
     proxy: {
       // Forward API requests to the API server during development
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:3002',
         changeOrigin: true,
-        secure: false,
+        secure: false
       },
     },
   },
