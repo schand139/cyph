@@ -1,6 +1,6 @@
 import { createPublicClient, http, formatUnits } from 'viem';
 import { base } from 'viem/chains';
-import { erc20ABI } from './abis';
+import { erc20ABI } from './abis.js';
 import { format, startOfDay, startOfWeek, startOfMonth, parseISO } from 'date-fns';
 
 // Cypher master wallet address

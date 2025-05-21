@@ -1,6 +1,6 @@
 import { createPublicClient, http, formatUnits } from 'viem';
 import { base } from 'viem/chains';
-import { aerodromePairABI } from './abis';
+import { aerodromePairABI } from './abis.js';
 
 // Aerodrome Finance factory address on Base chain
 const AERODROME_FACTORY_ADDRESS = '0x420DD381b31aEf6683db6B902084cB0FFECe40Da';
