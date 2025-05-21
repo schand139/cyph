@@ -25,8 +25,5 @@
       "path": "/api/preloadCache",
       "schedule": "0 1 * * *"
     }
-  ],
-  "env": {
-    "PRELOAD_API_KEY": "@preload-api-key"
-  }
+  ]
 }
