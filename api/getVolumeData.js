@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { get as getBlobData } from '@vercel/blob';
+import { getBlob } from '@vercel/blob';
 
 // Cypher master wallet address
 const CYPHER_MASTER_WALLET = '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     if (isVercel) {
       try {
         console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
-        const blob = await getBlobData(BLOB_CACHE_KEY);
+        const blob = await getBlob(BLOB_CACHE_KEY);
         
         if (blob) {
           const blobData = JSON.parse(await blob.text());
