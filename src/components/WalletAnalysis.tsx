@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { getTopCounterparties } from '../utils/blockchain';
+// Commented out to avoid unused import warning
+// import { getTopCounterparties } from '../utils/blockchain';
 import { generateMockCounterparties } from '../utils/dataProcessing';
 import { CYPHER_MASTER_WALLET } from '../utils/constants';
 import type { Counterparty } from '../types';
@@ -29,8 +30,13 @@ const WalletAnalysis = () => {
       // In a real app, we would fetch real data from the blockchain
       // For now, we'll use mock data
       // const data = await getTopCounterparties(address);
-      const data = generateMockCounterparties();
-      setCounterparties(data);
+      const mockData = generateMockCounterparties();
+      // Ensure the data matches the Counterparty type
+      const typedData = mockData.map(item => ({
+        ...item,
+        type: item.type as 'wallet' | 'contract' | 'protocol' | 'exchange'
+      }));
+      setCounterparties(typedData);
     } catch (error) {
       console.error('Error fetching counterparty data:', error);
       setError('Failed to fetch counterparty data. Please try again.');

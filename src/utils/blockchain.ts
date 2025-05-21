@@ -1,6 +1,6 @@
-import { createPublicClient, http, parseAbi, parseEther, formatUnits } from 'viem';
+import { createPublicClient, http, formatUnits } from 'viem';
 import { base } from 'viem/chains';
-import { CYPHER_MASTER_WALLET, BASE_RPC_URL, TOKENS, KNOWN_ADDRESSES } from './constants';
+import { BASE_RPC_URL, TOKENS, KNOWN_ADDRESSES } from './constants';
 import type { Transaction, Counterparty } from '../types';
 
 // Create a public client for Base chain
@@ -10,23 +10,25 @@ export const publicClient = createPublicClient({
 });
 
 // Aerodrome/Uniswap V3 pool ABI (simplified)
-const poolAbi = parseAbi([
+// Commented out to avoid unused variable warning
+/* const poolAbi = parseAbi([
   'function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
   'function token0() external view returns (address)',
   'function token1() external view returns (address)',
-]);
+]); */
 
 // ERC20 token ABI
-const erc20Abi = parseAbi([
+// Commented out to avoid unused variable warning
+/* const erc20Abi = parseAbi([
   'function balanceOf(address owner) view returns (uint256)',
   'function decimals() view returns (uint8)',
   'function symbol() view returns (string)',
   'function transfer(address to, uint256 value) returns (bool)',
   'event Transfer(address indexed from, address indexed to, uint256 value)',
-]);
+]); */
 
 // Get transactions for a wallet address
-export async function getWalletTransactions(address: string, startBlock = 0, endBlock = 'latest'): Promise<Transaction[]> {
+export async function getWalletTransactions(address: string): Promise<Transaction[]> {
   try {
     // Get native ETH transactions
     const sentTxs = await publicClient.getTransactionCount({
@@ -48,7 +50,7 @@ export async function getWalletTransactions(address: string, startBlock = 0, end
 }
 
 // Get token transfers for Cypher master wallet
-export async function getTokenTransfers(startBlock = 0, endBlock = 'latest'): Promise<Transaction[]> {
+export async function getTokenTransfers(): Promise<Transaction[]> {
   try {
     // In a real implementation, you would use an indexer or blockchain API
     // to get all token transfers for the Cypher master wallet
@@ -62,7 +64,7 @@ export async function getTokenTransfers(startBlock = 0, endBlock = 'latest'): Pr
 }
 
 // Get historical token price from Aerodrome/Uniswap V3 pools
-export async function getTokenPrice(tokenAddress: string, timestamp: number): Promise<number> {
+export async function getTokenPrice(): Promise<number> {
   try {
     // In a real implementation, you would query the Aerodrome/Uniswap V3 pools
     // to get the historical price of the token at the given timestamp
@@ -83,12 +85,12 @@ export async function calculateUsdValue(tx: Transaction): Promise<number> {
     
     if (tx.tokenAddress) {
       // For token transfers
-      const tokenPrice = await getTokenPrice(tx.tokenAddress, tx.timestamp);
+      const tokenPrice = await getTokenPrice();
       const tokenDecimals = TOKENS[tx.tokenSymbol as keyof typeof TOKENS]?.decimals || 18;
       usdValue = Number(formatUnits(tx.tokenAmount || 0n, tokenDecimals)) * tokenPrice;
     } else {
       // For native ETH transfers
-      const ethPrice = await getTokenPrice(TOKENS.ETH.address, tx.timestamp);
+      const ethPrice = await getTokenPrice();
       usdValue = Number(formatUnits(tx.value, 18)) * ethPrice;
     }
     
