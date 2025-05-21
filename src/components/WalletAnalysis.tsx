@@ -1,6 +1,4 @@
 import { useState, useEffect } from 'react';
-// Commented out to avoid unused import warning
-// import { getTopCounterparties } from '../utils/blockchain';
 import { generateMockCounterparties } from '../utils/dataProcessing';
 import { CYPHER_MASTER_WALLET } from '../utils/constants';
 import type { Counterparty } from '../types';
@@ -10,6 +8,7 @@ const WalletAnalysis = () => {
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [dataSource, setDataSource] = useState<'api' | 'mock'>('mock');
 
   // Function to validate Ethereum address
   const isValidEthereumAddress = (address: string): boolean => {
@@ -27,16 +26,49 @@ const WalletAnalysis = () => {
     setError(null);
 
     try {
-      // In a real app, we would fetch real data from the blockchain
-      // For now, we'll use mock data
-      // const data = await getTopCounterparties(address);
+      console.log('Fetching wallet analysis for address:', address);
+      
+      // Try to fetch from API first
+      try {
+        console.log('Attempting to fetch from API');
+        const response = await fetch(`/api/getWalletAnalysis?address=${address}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('API data received:', data);
+          
+          if (data && data.counterparties) {
+            console.log('Setting counterparties from API:', data.counterparties);
+            setCounterparties(data.counterparties);
+            setDataSource('api');
+            setIsLoading(false);
+            return;
+          }
+        }
+        console.log('API request failed or returned invalid data, falling back to mock data');
+      } catch (apiError) {
+        console.log('API request error, falling back to mock data:', apiError);
+      }
+      
+      // Fallback to mock data if API fails
+      console.log('Using mock data');
       const mockData = generateMockCounterparties();
       // Ensure the data matches the Counterparty type
       const typedData = mockData.map(item => ({
         ...item,
         type: item.type as 'wallet' | 'contract' | 'protocol' | 'exchange'
       }));
-      setCounterparties(typedData);
+      const data = { counterparties: typedData };
+      
+      console.log('Mock data generated:', data);
+      
+      if (!data || !data.counterparties) {
+        console.error('Invalid mock data format:', data);
+        throw new Error('Invalid mock data format');
+      }
+      
+      setCounterparties(data.counterparties);
+      setDataSource('mock');
     } catch (error) {
       console.error('Error fetching counterparty data:', error);
       setError('Failed to fetch counterparty data. Please try again.');
@@ -73,10 +105,15 @@ const WalletAnalysis = () => {
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-      <div className="mb-6">
+      <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
           Wallet Analysis
         </h2>
+        <span className={`text-xs px-2 py-1 rounded-full ${dataSource === 'api' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+          {dataSource === 'api' ? 'API Data' : 'Mock Data'}
+        </span>
+      </div>
+      <div className="mb-6">
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
           View the top 10 counterparties for any wallet address
         </p>

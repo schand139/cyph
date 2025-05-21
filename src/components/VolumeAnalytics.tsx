@@ -31,15 +31,48 @@ const VolumeAnalytics = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('daily');
   const [volumeData, setVolumeData] = useState<VolumeData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dataSource, setDataSource] = useState<'api' | 'mock'>('mock');
 
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        // In a real app, we would fetch real data from the blockchain
-        // For now, we'll use mock data
+        console.log('Fetching volume data for period:', selectedPeriod);
+        
+        // Try to fetch from API first
+        try {
+          console.log('Attempting to fetch from API');
+          const response = await fetch(`/api/getVolumeData?period=${selectedPeriod}&year=2025`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            console.log('API data received:', data);
+            
+            if (data && data[selectedPeriod]) {
+              console.log(`Setting volume data from API for ${selectedPeriod}:`, data[selectedPeriod]);
+              setVolumeData(data[selectedPeriod]);
+              setDataSource('api');
+              setIsLoading(false);
+              return;
+            }
+          }
+          console.log('API request failed or returned invalid data, falling back to mock data');
+        } catch (apiError) {
+          console.log('API request error, falling back to mock data:', apiError);
+        }
+        
+        // Fallback to mock data if API fails
+        console.log('Using mock data');
         const mockData = generateMockVolumeData();
+        
+        if (!mockData || !mockData[selectedPeriod]) {
+          console.error('Invalid mock data format:', mockData);
+          throw new Error('Invalid mock data format');
+        }
+        
+        console.log(`Setting volume data from mock for ${selectedPeriod}:`, mockData[selectedPeriod]);
         setVolumeData(mockData[selectedPeriod]);
+        setDataSource('mock');
       } catch (error) {
         console.error('Error fetching volume data:', error);
       } finally {
@@ -52,18 +85,23 @@ const VolumeAnalytics = () => {
 
   // Format data for the chart
   const chartData = {
-    labels: volumeData.map(item => {
+    labels: volumeData?.map((item) => {
+      console.log('Processing chart item:', item);
       const date = parseISO(item.date);
-      return selectedPeriod === 'daily' 
-        ? format(date, 'MMM d') 
-        : selectedPeriod === 'weekly'
-          ? `Week of ${format(date, 'MMM d')}`
-          : format(date, 'MMMM yyyy');
-    }),
+      // Format date based on period
+      if (selectedPeriod === 'daily') {
+        return format(date, 'MMM d');
+      } else if (selectedPeriod === 'weekly') {
+        // For weekly data, just show the date of the week start
+        return format(date, 'MMM d');
+      } else {
+        return format(date, 'MMM yyyy');
+      }
+    }) || [],
     datasets: [
       {
         label: 'USD Volume',
-        data: volumeData.map(item => item.volume),
+        data: volumeData?.map((item) => item.volume) || [],
         backgroundColor: 'rgba(75, 192, 192, 0.2)',
         borderColor: 'rgba(75, 192, 192, 1)',
         borderWidth: 1,
@@ -71,6 +109,8 @@ const VolumeAnalytics = () => {
       },
     ],
   };
+
+  console.log('Chart data prepared:', chartData);
 
   // Chart options
   const chartOptions = {
@@ -125,16 +165,31 @@ const VolumeAnalytics = () => {
   const totalVolume = volumeData.reduce((sum, item) => sum + item.volume, 0);
   const averageVolume = volumeData.length > 0 ? totalVolume / volumeData.length : 0;
 
+  console.log('Rendering VolumeAnalytics with data:', { volumeData, isLoading, selectedPeriod });
+
   return (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6 relative">
       <div className="flex flex-col md:flex-row justify-between mb-6">
         <div>
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-            USD Load Volume Analytics (2025)
-          </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Visualize the total USD load volume for Cypher's master wallet
-          </p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">USD Load Volume (2025)</h2>
+          <div className="flex items-center gap-2">
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+              Total volume: {new Intl.NumberFormat('en-US', { 
+                style: 'currency', 
+                currency: 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              }).format(totalVolume)} | Average: {new Intl.NumberFormat('en-US', { 
+                style: 'currency', 
+                currency: 'USD',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              }).format(Math.round(averageVolume))}
+            </p>
+            <span className={`text-xs px-2 py-1 rounded-full ${dataSource === 'api' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+              {dataSource === 'api' ? 'API Data' : 'Mock Data'}
+            </span>
+          </div>
         </div>
         
         {/* Time Period Tabs */}
@@ -228,8 +283,12 @@ const VolumeAnalytics = () => {
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {volumeData.slice(0).reverse().map((item, index) => (
                 <tr key={index} className={index % 2 === 0 ? 'bg-white dark:bg-gray-800' : 'bg-gray-50 dark:bg-gray-700'}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
-                    {item.date}
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {selectedPeriod === 'daily'
+                      ? format(parseISO(item.date), 'MMM d, yyyy')
+                      : selectedPeriod === 'weekly'
+                      ? format(parseISO(item.date), 'MMM d, yyyy') + ' (Week Start)'
+                      : format(parseISO(item.date), 'MMMM yyyy')}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-white">
                     {new Intl.NumberFormat('en-US', { 
