@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { getBlob } from '@vercel/blob';
+import { head, getDownloadUrl } from '@vercel/blob';
 
 // Cypher master wallet address
 const CYPHER_MASTER_WALLET = '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
@@ -54,10 +54,16 @@ export default async function handler(req, res) {
     if (isVercel) {
       try {
         console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
-        const blob = await getBlob(BLOB_CACHE_KEY);
+        // First check if the blob exists using head
+        const blobInfo = await head(BLOB_CACHE_KEY);
         
-        if (blob) {
-          const blobData = JSON.parse(await blob.text());
+        if (blobInfo) {
+          // Get the download URL for the blob
+          const url = await getDownloadUrl(BLOB_CACHE_KEY);
+          
+          // Fetch the data from the URL
+          const response = await fetch(url);
+          const blobData = await response.json();
           console.log(`Successfully retrieved data from Blob storage`);
           
           // Process the data to fill in missing weeks
