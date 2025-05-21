@@ -17,6 +17,7 @@
     "vercel-build": "npm run build:all && npm run preload-cache"
   },
   "dependencies": {
+    "@vercel/blob": "^1.0.2",
     "@vercel/kv": "^0.2.4",
     "alchemy-sdk": "^3.5.9",
     "autoprefixer": "^10.4.17",
