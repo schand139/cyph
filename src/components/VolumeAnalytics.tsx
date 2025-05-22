@@ -31,7 +31,7 @@ const VolumeAnalytics = () => {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('daily');
   const [volumeData, setVolumeData] = useState<VolumeData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [dataSource, setDataSource] = useState<'blockchain' | 'mock'>('mock');
+  const [dataSource, setDataSource] = useState<'blockchain' | 'blob-storage' | 'mock'>('mock');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -54,7 +54,8 @@ const VolumeAnalytics = () => {
             if (data && data[selectedPeriod] && Array.isArray(data[selectedPeriod])) {
               console.log(`Setting volume data from API for ${selectedPeriod}:`, data[selectedPeriod]);
               setVolumeData(data[selectedPeriod]);
-              setDataSource(data.source || 'mock'); // Use the source from the API response
+              // Recognize both 'blockchain' and 'blob-storage' as valid non-mock sources
+              setDataSource(data.source === 'blob-storage' ? 'blob-storage' : (data.source || 'mock'));
               setIsLoading(false);
               return;
             } else {
@@ -196,8 +197,8 @@ const VolumeAnalytics = () => {
                 maximumFractionDigits: 0
               }).format(Math.round(averageVolume))}
             </p>
-            <span className={`text-xs px-2 py-1 rounded-full ${dataSource === 'blockchain' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-              {dataSource === 'blockchain' ? 'Blockchain Data' : 'Mock Data'}
+            <span className={`text-xs px-2 py-1 rounded-full ${dataSource === 'mock' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
+              {dataSource === 'mock' ? 'Mock Data' : (dataSource === 'blob-storage' ? 'Blob Storage Data' : 'Blockchain Data')}
             </span>
           </div>
         </div>
