@@ -55,14 +55,21 @@ export default async function handler(req, res) {
       try {
         console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
         // First check if the blob exists using head
-        const blobInfo = await head(BLOB_CACHE_KEY);
+        const blobInfo = await head(BLOB_CACHE_KEY + '.json');
         
         if (blobInfo) {
+          console.log(`Found blob with size: ${blobInfo.size} bytes, last modified: ${blobInfo.uploadedAt}`);
+          
           // Get the download URL for the blob
-          const url = await getDownloadUrl(BLOB_CACHE_KEY);
+          const url = await getDownloadUrl(BLOB_CACHE_KEY + '.json');
+          console.log(`Got download URL for blob: ${url}`);
           
           // Fetch the data from the URL
           const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch blob data: ${response.status} ${response.statusText}`);
+          }
+          
           const blobData = await response.json();
           console.log(`Successfully retrieved data from Blob storage`);
           
@@ -98,6 +105,7 @@ export default async function handler(req, res) {
       
       if (cachedData && cachedData.data) {
         // The cache structure has data nested inside a 'data' property
+        console.log('Raw cached data structure:', JSON.stringify(cachedData).substring(0, 200) + '...');
         console.log(`Returning blockchain data with ${cachedData.data.monthly?.length || 0} monthly entries`);
         
         // Process the data to fill in missing weeks

@@ -1,6 +1,8 @@
 // API endpoint for preloading the cache
 // This can be called by a scheduled job in Vercel
 import preloadCache from '../scripts/preloadCache.js';
+import { put } from '@vercel/blob';
+import { getData } from '../utils/unifiedCacheManager.js';
 
 export default async function handler(req, res) {
   try {
@@ -13,12 +15,54 @@ export default async function handler(req, res) {
     // Run the cache preloading
     await preloadCache();
     
-    // Return success response
-    res.status(200).json({ 
-      success: true, 
-      message: 'Cache preloaded successfully',
-      timestamp: new Date().toISOString()
-    });
+    // Get the wallet address and year from query parameters or use defaults
+    const walletAddress = req.query.wallet || process.env.CYPHER_MASTER_WALLET || '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
+    const year = req.query.year || '2025';
+    const volumeCacheKey = `volume-${walletAddress}-${year}`;
+    
+    // Get the data from the cache that was just preloaded
+    const cachedData = await getData(volumeCacheKey);
+    
+    if (cachedData) {
+      try {
+        // Upload the data to Vercel Blob storage
+        console.log(`Uploading data to Vercel Blob storage with key: ${volumeCacheKey}`);
+        const jsonData = JSON.stringify(cachedData);
+        
+        // Upload to Vercel Blob storage
+        const { url } = await put(volumeCacheKey + '.json', jsonData, {
+          contentType: 'application/json',
+          access: 'public', // Make it public since we're using it as a cache
+        });
+        
+        console.log(`Successfully uploaded data to Vercel Blob storage: ${url}`);
+        
+        // Return success response with Blob URL
+        res.status(200).json({ 
+          success: true, 
+          message: 'Cache preloaded and uploaded to Blob storage successfully',
+          blobUrl: url,
+          timestamp: new Date().toISOString()
+        });
+      } catch (blobError) {
+        console.error(`Error uploading to Vercel Blob storage: ${blobError.message}`);
+        
+        // Return partial success response
+        res.status(200).json({ 
+          success: true, 
+          message: 'Cache preloaded successfully but failed to upload to Blob storage',
+          error: blobError.message,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } else {
+      // Return success response without Blob URL
+      res.status(200).json({ 
+        success: true, 
+        message: 'Cache preloaded successfully but no data found to upload to Blob storage',
+        timestamp: new Date().toISOString()
+      });
+    }
   } catch (error) {
     console.error('Error preloading cache:', error);
     res.status(500).json({ 
