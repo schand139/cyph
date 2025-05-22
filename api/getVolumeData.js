@@ -41,31 +41,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid period. Must be daily, weekly, or monthly.' });
     }
     
-    // Create cache key based on parameters
+    // Create cache keys
     const apiCacheKey = `volume-${wallet}-${year}-${period}`;
+    const volumeCacheKey = `volume-${wallet}-${year}`;
     
-    // Check in-memory cache first (for fast responses during the same server session)
-    if (apiResponseCache.has(apiCacheKey)) {
-      console.log(`Using in-memory cache for ${apiCacheKey}`);
-      return res.status(200).json(apiResponseCache.get(apiCacheKey));
-    }
-    
+    // 1. Check persistent cache first (Blob storage for Vercel, KV or file for local)
     // Special case for Vercel production - use Blob storage directly if available
     if (isVercel) {
-      // Check if we have the BLOB_READ_WRITE_TOKEN environment variable
-      if (!process.env.BLOB_READ_WRITE_TOKEN) {
-        console.log('BLOB_READ_WRITE_TOKEN environment variable not found, skipping Blob storage');
-        console.log('To enable Blob storage, add the BLOB_READ_WRITE_TOKEN to your Vercel environment variables');
-        // Continue to standard cache checking
-      } else {
-        try {
-          console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
-          // First check if the blob exists using head
-          const blobInfo = await head(BLOB_CACHE_KEY);
+      try {
+        console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
+        // First check if the blob exists using head
+        const blobInfo = await head(BLOB_CACHE_KEY);
+        
+        if (blobInfo) {
+          console.log(`Found blob with size: ${blobInfo.size} bytes, last modified: ${blobInfo.uploadedAt}`);
           
-          if (blobInfo) {
-            console.log(`Found blob with size: ${blobInfo.size} bytes, last modified: ${blobInfo.uploadedAt}`);
-            
+          try {
             // Get the download URL for the blob
             const url = await getDownloadUrl(BLOB_CACHE_KEY);
             console.log(`Got download URL for blob: ${url}`);
@@ -94,16 +85,18 @@ export default async function handler(req, res) {
             apiResponseCache.set(apiCacheKey, result);
             
             return res.status(200).json(result);
+          } catch (urlError) {
+            console.error(`Error with Blob URL: ${urlError.message}`);
+            // Continue to standard cache checking
           }
-        } catch (error) {
-          console.warn(`Error fetching from Blob storage: ${error.message}. Falling back to standard cache.`);
-          // Continue to standard cache checking
         }
+      } catch (error) {
+        console.warn(`Error fetching from Blob storage: ${error.message}. Falling back to standard cache.`);
+        // Continue to standard cache checking
       }
     }
     
-    // Check persistent cache (file or KV)
-    const volumeCacheKey = `volume-${wallet}-${year}`;
+    // Check standard persistent cache (KV)
     const cacheExists = await dataExists(volumeCacheKey);
     
     if (cacheExists) {
@@ -132,6 +125,12 @@ export default async function handler(req, res) {
       }
     }
     
+    // 2. Check in-memory cache (for fast responses during the same server session)
+    if (apiResponseCache.has(apiCacheKey)) {
+      console.log(`Using in-memory cache for ${apiCacheKey}`);
+      return res.status(200).json(apiResponseCache.get(apiCacheKey));
+    }
+    
     // If we reach this point, we don't have cached data in the unified cache manager
     // Check if we have an Alchemy-generated cache file (only in local environment)
     if (!isVercel) {
@@ -157,7 +156,7 @@ export default async function handler(req, res) {
             };
             
             // Store in unified cache for future use (especially important for Vercel deployment)
-            await saveData(volumeCacheKey, { data: result, lastUpdated: new Date().toISOString() }, 86400); // 24 hour TTL
+            await saveData(volumeCacheKey, { data: fileData.data, lastUpdated: new Date().toISOString() }, 86400); // 24 hour TTL
             
             // Store in in-memory cache and return
             apiResponseCache.set(apiCacheKey, result);
