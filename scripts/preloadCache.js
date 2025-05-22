@@ -176,21 +176,27 @@ export default async function preloadCache(forceUpdateTest = false) {
       await saveData(volumeCacheKey, dataToUpload, 86400); // 24 hour TTL
       
       // Then upload to Vercel Blob storage for persistent storage
-      try {
-        console.log(`Uploading data to Vercel Blob storage with key: ${volumeCacheKey}`);
-        const jsonData = JSON.stringify(dataToUpload);
-        
-        // Upload to Vercel Blob storage
-        const { url } = await put(volumeCacheKey + '.json', jsonData, {
-          contentType: 'application/json',
-          access: 'public', // Make it public since we're using it as a cache
-          allowOverwrite: true, // Allow overwriting existing blobs
-        });
-        
-        console.log(`Successfully uploaded data to Vercel Blob storage: ${url}`);
-      } catch (blobError) {
-        console.error(`Error uploading to Vercel Blob storage: ${blobError.message}`);
-        console.log('Continuing with standard cache only');
+      // Check if we have the BLOB_READ_WRITE_TOKEN environment variable
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        console.log('BLOB_READ_WRITE_TOKEN environment variable not found, skipping Blob storage upload');
+        console.log('To enable Blob storage, add the BLOB_READ_WRITE_TOKEN to your Vercel environment variables');
+      } else {
+        try {
+          console.log(`Uploading data to Vercel Blob storage with key: ${volumeCacheKey}`);
+          const jsonData = JSON.stringify(dataToUpload);
+          
+          // Upload to Vercel Blob storage
+          const { url } = await put(volumeCacheKey, jsonData, {
+            contentType: 'application/json',
+            access: 'public', // Make it public since we're using it as a cache
+            allowOverwrite: true, // Allow overwriting existing blobs
+          });
+          
+          console.log(`Successfully uploaded data to Vercel Blob storage: ${url}`);
+        } catch (blobError) {
+          console.error(`Error uploading to Vercel Blob storage: ${blobError.message}`);
+          console.log('Continuing with standard cache only');
+        }
       }
       
       console.log('Cache preload completed for Vercel environment');

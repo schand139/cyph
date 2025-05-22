@@ -52,46 +52,53 @@ export default async function handler(req, res) {
     
     // Special case for Vercel production - use Blob storage directly if available
     if (isVercel) {
-      try {
-        console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
-        // First check if the blob exists using head
-        const blobInfo = await head(BLOB_CACHE_KEY + '.json');
-        
-        if (blobInfo) {
-          console.log(`Found blob with size: ${blobInfo.size} bytes, last modified: ${blobInfo.uploadedAt}`);
-          
-          // Get the download URL for the blob
-          const url = await getDownloadUrl(BLOB_CACHE_KEY + '.json');
-          console.log(`Got download URL for blob: ${url}`);
-          
-          // Fetch the data from the URL
-          const response = await fetch(url);
-          if (!response.ok) {
-            throw new Error(`Failed to fetch blob data: ${response.status} ${response.statusText}`);
-          }
-          
-          const blobData = await response.json();
-          console.log(`Successfully retrieved data from Blob storage`);
-          
-          // Process the data to fill in missing weeks
-          const processedData = processVolumeData(blobData.data.data, year);
-          
-          const result = {
-            daily: processedData.daily || [],
-            weekly: processedData.weekly || [],
-            monthly: processedData.monthly || [],
-            source: 'blob-storage',
-            period
-          };
-          
-          // Cache the API response in memory
-          apiResponseCache.set(apiCacheKey, result);
-          
-          return res.status(200).json(result);
-        }
-      } catch (error) {
-        console.warn(`Error fetching from Blob storage: ${error.message}. Falling back to standard cache.`);
+      // Check if we have the BLOB_READ_WRITE_TOKEN environment variable
+      if (!process.env.BLOB_READ_WRITE_TOKEN) {
+        console.log('BLOB_READ_WRITE_TOKEN environment variable not found, skipping Blob storage');
+        console.log('To enable Blob storage, add the BLOB_READ_WRITE_TOKEN to your Vercel environment variables');
         // Continue to standard cache checking
+      } else {
+        try {
+          console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
+          // First check if the blob exists using head
+          const blobInfo = await head(BLOB_CACHE_KEY);
+          
+          if (blobInfo) {
+            console.log(`Found blob with size: ${blobInfo.size} bytes, last modified: ${blobInfo.uploadedAt}`);
+            
+            // Get the download URL for the blob
+            const url = await getDownloadUrl(BLOB_CACHE_KEY);
+            console.log(`Got download URL for blob: ${url}`);
+            
+            // Fetch the data from the URL
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`Failed to fetch blob data: ${response.status} ${response.statusText}`);
+            }
+            
+            const blobData = await response.json();
+            console.log(`Successfully retrieved data from Blob storage`);
+            
+            // Process the data to fill in missing weeks
+            const processedData = processVolumeData(blobData.data.data, year);
+            
+            const result = {
+              daily: processedData.daily || [],
+              weekly: processedData.weekly || [],
+              monthly: processedData.monthly || [],
+              source: 'blob-storage',
+              period
+            };
+            
+            // Cache the API response in memory
+            apiResponseCache.set(apiCacheKey, result);
+            
+            return res.status(200).json(result);
+          }
+        } catch (error) {
+          console.warn(`Error fetching from Blob storage: ${error.message}. Falling back to standard cache.`);
+          // Continue to standard cache checking
+        }
       }
     }
     
