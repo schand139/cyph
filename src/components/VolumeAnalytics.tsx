@@ -130,6 +130,7 @@ const VolumeAnalytics = () => {
     plugins: {
       legend: {
         position: 'top' as const,
+        align: 'end' as const,
       },
       title: {
         display: true,
@@ -197,9 +198,6 @@ const VolumeAnalytics = () => {
                 maximumFractionDigits: 0
               }).format(Math.round(averageVolume))}
             </p>
-            <span className={`text-xs px-2 py-1 rounded-full ${dataSource === 'mock' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'}`}>
-              {dataSource === 'mock' ? 'Mock Data' : (dataSource === 'blob-storage' ? 'Blob Storage Data' : 'Blockchain Data')}
-            </span>
           </div>
         </div>
         
@@ -242,13 +240,7 @@ const VolumeAnalytics = () => {
         </div>
       </div>
 
-      <div className="bg-indigo-50 dark:bg-indigo-900 p-4 rounded-lg mb-6">
-        <p className="text-sm text-indigo-700 dark:text-indigo-200">
-          {dataSource === 'blockchain' 
-            ? 'Showing real blockchain data from Base chain for multiple tokens (USDC, DAI, USDT, WETH).'
-            : 'Showing mock data for demonstration purposes. Connect to Base chain for real-time data.'}
-        </p>
-      </div>
+
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div className="bg-gray-50 dark:bg-gray-700 p-4 rounded-lg">

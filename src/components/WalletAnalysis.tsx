@@ -8,7 +8,6 @@ const WalletAnalysis = () => {
   const [counterparties, setCounterparties] = useState<Counterparty[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [dataSource, setDataSource] = useState<'api' | 'mock'>('mock');
 
   // Function to validate Ethereum address
   const isValidEthereumAddress = (address: string): boolean => {
@@ -40,7 +39,7 @@ const WalletAnalysis = () => {
           if (data && data.counterparties) {
             console.log('Setting counterparties from API:', data.counterparties);
             setCounterparties(data.counterparties);
-            setDataSource('api');
+            // Data successfully fetched from API
             setIsLoading(false);
             return;
           }
@@ -68,7 +67,7 @@ const WalletAnalysis = () => {
       }
       
       setCounterparties(data.counterparties);
-      setDataSource('mock');
+      // Using mock data
     } catch (error) {
       console.error('Error fetching counterparty data:', error);
       setError('Failed to fetch counterparty data. Please try again.');
@@ -109,9 +108,6 @@ const WalletAnalysis = () => {
         <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
           Wallet Analysis
         </h2>
-        <span className={`text-xs px-2 py-1 rounded-full ${dataSource === 'api' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-          {dataSource === 'api' ? 'API Data' : 'Mock Data'}
-        </span>
       </div>
       <div className="mb-6">
         <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
