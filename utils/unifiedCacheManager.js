@@ -1,11 +1,84 @@
 // Unified cache manager that works with both file system and Vercel Blob storage
-import { 
-  saveToCache, 
-  getFromCache, 
-  cacheExists, 
-  updateCache, 
-  deleteFromCache 
-} from './cacheManager.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+// Get the directory name in ESM context
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// File system cache functions
+const saveToCache = (key, data) => {
+  try {
+    const cachePath = path.join(__dirname, '..', 'cache', `${key}.json`);
+    const cacheDir = path.dirname(cachePath);
+    
+    // Create cache directory if it doesn't exist
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
+    
+    fs.writeFileSync(cachePath, JSON.stringify(data, null, 2));
+    return true;
+  } catch (error) {
+    console.error(`Error saving to cache: ${error.message}`);
+    return false;
+  }
+};
+
+const getFromCache = (key) => {
+  try {
+    const cachePath = path.join(__dirname, '..', 'cache', `${key}.json`);
+    if (!fs.existsSync(cachePath)) {
+      return null;
+    }
+    
+    const data = fs.readFileSync(cachePath, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error(`Error reading from cache: ${error.message}`);
+    return null;
+  }
+};
+
+const cacheExists = (key) => {
+  const cachePath = path.join(__dirname, '..', 'cache', `${key}.json`);
+  return fs.existsSync(cachePath);
+};
+
+const updateCache = (key, updateFn) => {
+  try {
+    const cachePath = path.join(__dirname, '..', 'cache', `${key}.json`);
+    if (!fs.existsSync(cachePath)) {
+      return false;
+    }
+    
+    const data = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    const updatedData = updateFn(data);
+    
+    fs.writeFileSync(cachePath, JSON.stringify(updatedData, null, 2));
+    return true;
+  } catch (error) {
+    console.error(`Error updating cache: ${error.message}`);
+    return false;
+  }
+};
+
+const deleteFromCache = (key) => {
+  try {
+    const cachePath = path.join(__dirname, '..', 'cache', `${key}.json`);
+    if (!fs.existsSync(cachePath)) {
+      return false;
+    }
+    
+    fs.unlinkSync(cachePath);
+    return true;
+  } catch (error) {
+    console.error(`Error deleting from cache: ${error.message}`);
+    return false;
+  }
+};
 
 import { 
   saveToBlobCache, 

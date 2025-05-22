@@ -14,7 +14,7 @@
     "preview": "vite preview",
     "preload-cache": "node scripts/preloadCache.js",
     "update-cache-alchemy": "node scripts/updateCacheWithAlchemy.js",
-    "vercel-build": "npm run build:all && npm run preload-cache"
+    "vercel-build": "npm run build:all"
   },
   "dependencies": {
     "@vercel/blob": "^1.0.2",
