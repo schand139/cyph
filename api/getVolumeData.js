@@ -50,45 +50,40 @@ export default async function handler(req, res) {
     if (isVercel) {
       try {
         console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
-        // First check if the blob exists using head
-        const blobInfo = await head(BLOB_CACHE_KEY);
         
-        if (blobInfo) {
-          console.log(`Found blob with size: ${blobInfo.size} bytes, last modified: ${blobInfo.uploadedAt}`);
-          
-          try {
-            // Get the download URL for the blob
-            const url = await getDownloadUrl(BLOB_CACHE_KEY);
-            console.log(`Got download URL for blob: ${url}`);
-            
-            // Fetch the data from the URL
-            const response = await fetch(url);
-            if (!response.ok) {
-              throw new Error(`Failed to fetch blob data: ${response.status} ${response.statusText}`);
-            }
-            
-            const blobData = await response.json();
-            console.log(`Successfully retrieved data from Blob storage`);
-            
-            // Process the data to fill in missing weeks
-            const processedData = processVolumeData(blobData.data.data, year);
-            
-            const result = {
-              daily: processedData.daily || [],
-              weekly: processedData.weekly || [],
-              monthly: processedData.monthly || [],
-              source: 'blob-storage',
-              period
-            };
-            
-            // Cache the API response in memory
-            apiResponseCache.set(apiCacheKey, result);
-            
-            return res.status(200).json(result);
-          } catch (urlError) {
-            console.error(`Error with Blob URL: ${urlError.message}`);
-            // Continue to standard cache checking
+        // TODO: This is a temporary hardcoded URL that needs to be fixed
+        // We should be using the getDownloadUrl function from @vercel/blob instead
+        const url = 'https://k9stbjpeo6edojyd.public.blob.vercel-storage.com/volume-0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD-2025';
+        console.log(`Using hardcoded Blob URL: ${url}`);
+        
+        try {
+          // Fetch the data from the hardcoded URL
+          const response = await fetch(url);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch blob data: ${response.status} ${response.statusText}`);
           }
+          
+          const blobData = await response.json();
+          console.log(`Successfully retrieved data from Blob storage`);
+          
+          // Process the data to fill in missing weeks
+          const processedData = processVolumeData(blobData.data, year);
+          
+          const result = {
+            daily: processedData.daily || [],
+            weekly: processedData.weekly || [],
+            monthly: processedData.monthly || [],
+            source: 'blob-storage',
+            period
+          };
+          
+          // Cache the API response in memory
+          apiResponseCache.set(apiCacheKey, result);
+          
+          return res.status(200).json(result);
+        } catch (urlError) {
+          console.error(`Error with hardcoded Blob URL: ${urlError.message}`);
+          // Continue to standard cache checking
         }
       } catch (error) {
         console.warn(`Error fetching from Blob storage: ${error.message}. Falling back to standard cache.`);
