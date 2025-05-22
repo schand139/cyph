@@ -9,7 +9,7 @@
 
 import { format } from 'date-fns';
 import { Alchemy, Network } from 'alchemy-sdk';
-import { saveData, getData } from '../utils/unifiedCacheManager.js';
+import { saveData as saveToCache, getData as getFromCache } from '../utils/unifiedCacheManager.js';
 import * as dotenv from 'dotenv';
 import { createPublicClient, http, formatUnits } from 'viem';
 import { base } from 'viem/chains';
@@ -199,6 +199,12 @@ async function getPairAddress(client, tokenA, tokenB) {
   }
 }
 
+// Note: We now use the unified cache manager's saveData function (imported as saveToCache)
+// instead of defining our own local saveData function
+
+// Note: We now use the unified cache manager's getData function (imported as getFromCache)
+// instead of defining our own local getData function
+
 /**
  * Helper function to get reserves from a pair
  * @param {Object} client - Viem public client
@@ -329,7 +335,7 @@ function calculatePrice(reserves, tokenAddress, usdcAddress) {
  */
 async function getExistingTransactions(walletAddress = CYPHER_MASTER_WALLET, year = '2025') {
   const cacheKey = `transactions-${walletAddress}-${year}`;
-  const cachedData = await getData(cacheKey);
+  const cachedData = await getFromCache(cacheKey);
   
   if (cachedData && cachedData.data && Array.isArray(cachedData.data)) {
     return cachedData.data;
@@ -970,10 +976,10 @@ async function fetchTransactionsWithAlchemy(walletAddress = CYPHER_MASTER_WALLET
     
     // Cache the transactions
     const cacheKey = `transactions-${walletAddress}-${year}`;
-    await saveData(cacheKey, uniqueTransactions, 604800); // Cache for one week
+    await saveToCache(cacheKey, uniqueTransactions, 604800); // Cache for one week
     
     // Update volume cache
-    await updateVolumeCache(walletAddress, year, uniqueTransactions, startDate, effectiveEndDate);
+    await updateVolumeCache(walletAddress, year, uniqueTransactions, startDate, effectiveEndDate, currentBlock);
     
     console.timeEnd('Alchemy Fetch Time');
     return uniqueTransactions;
@@ -997,7 +1003,7 @@ async function fetchTransactionsWithAlchemy(walletAddress = CYPHER_MASTER_WALLET
  * @param {Date} endDate - End date for the data range
  * @returns {void} - No return value, but saves data to cache
  */
-async function updateVolumeCache(walletAddress, year, transactions, startDate, endDate) {
+async function updateVolumeCache(walletAddress, year, transactions, startDate, endDate, currentBlock) {
   console.log('Updating volume cache with card load data (incoming transactions only)...');
   
   // Process transactions into daily volume data
@@ -1103,12 +1109,14 @@ async function updateVolumeCache(walletAddress, year, transactions, startDate, e
   // First, aggregate the actual data by week
   for (const day of dailyData) {
     // Get the start of the week (Tuesday) for this date to match existing data format
-    const date = new Date(day.date);
     // Find the Tuesday of the week
-    const dayOfWeek = date.getDay(); // 0 = Sunday, 1 = Monday, 2 = Tuesday, etc.
-    const daysUntilTuesday = (dayOfWeek <= 2) ? (2 - dayOfWeek) : (9 - dayOfWeek);
+    const date = new Date(day.date);
+    // Find the first Tuesday in or after the start date
+    while (date.getDay() !== 2) { // 2 = Tuesday
+      date.setDate(date.getDate() + 1);
+    }
     const weekStart = new Date(date);
-    weekStart.setDate(date.getDate() + daysUntilTuesday);
+    weekStart.setDate(date.getDate() - date.getDay() + (date.getDay() === 0 ? -6 : 1)); // Start on Monday
     const weekStartStr = weekStart.toISOString().split('T')[0]; // Format as YYYY-MM-DD
     
     if (!weekMap.has(weekStartStr)) {
@@ -1217,17 +1225,24 @@ async function updateVolumeCache(walletAddress, year, transactions, startDate, e
   volumeData.weekly = updatedWeeklyData;
   volumeData.monthly = updatedMonthlyData;
   
-  // Create the final data structure
+  // Create the final data structure with simplified schema (no nesting) and block info
   const finalVolumeData = {
     daily: dailyData,
     weekly: weeklyData,
     monthly: monthlyData,
-    lastUpdated: new Date().toISOString()
+    lastUpdated: new Date().toISOString(),
+    blockInfo: {
+      lastProcessedBlock: currentBlock,
+      processingDate: new Date().toISOString()
+    }
   };
   
-  // Save to cache
+  // Check if we have existing data in the cache
   const volumeCacheKey = `volume-${walletAddress}-${year}`;
-  await saveData(volumeCacheKey, { data: finalVolumeData, lastUpdated: new Date().toISOString() });
+  let existingVolumeData = await getFromCache(volumeCacheKey);
+  
+  // Save the processed data to cache
+  await saveToCache(volumeCacheKey, finalVolumeData);
   
   console.log(`Updated volume cache for ${walletAddress} (${year}) with ${dailyData.length} daily entries, ${weeklyData.length} weekly entries, and ${monthlyData.length} monthly entries`);
   
@@ -1310,8 +1325,33 @@ function fillMissingMonths(monthMap, startDate, endDate) {
 // Export the fetchTransactionsWithAlchemy function for use by other modules
 export { fetchTransactionsWithAlchemy };
 
+// Default export for use by preloadCache.js
+export default async function initialCacheFetch(forceRefresh = true) {
+  try {
+    const walletAddress = process.env.CYPHER_MASTER_WALLET || '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
+    const year = '2025';
+    
+    console.log(`Using wallet address: ${walletAddress}`);
+    
+    // Load the Alchemy API key
+    if (!process.env.ALCHEMY_API_KEY) {
+      throw new Error('ALCHEMY_API_KEY is not defined in the environment variables');
+    }
+    console.log('Alchemy API Key loaded successfully');
+    
+    // Fetch transactions for the specified wallet and year
+    const transactions = await fetchTransactionsWithAlchemy(walletAddress, year, forceRefresh);
+    
+    console.log('Blockchain data fetching completed successfully');
+    return transactions;
+  } catch (error) {
+    console.error('Error in initialCacheFetch:', error);
+    throw error;
+  }
+}
+
 // Only run the function directly if this script is executed directly (not imported)
-if (import.meta.url === import.meta.url.match(/[^\/]*$/)[0]) {
+if (import.meta.url === import.meta.url.match(/[^/]*$/)[0]) {
   fetchTransactionsWithAlchemy(CYPHER_MASTER_WALLET, '2025', true).then(transactions => {
     console.log('Alchemy cache update completed successfully');
     console.log(`Total transactions: ${transactions.length}`);

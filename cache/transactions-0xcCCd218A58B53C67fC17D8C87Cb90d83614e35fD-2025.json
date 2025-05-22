@@ -1802,15 +1802,6 @@
     },
     {
       "date": "2025-01-22",
-      "value": 0.004937,
-      "token": "USDC",
-      "tokenAmount": 0.004937,
-      "direction": "in",
-      "blockNumber": "0x183aaeb",
-      "transactionHash": "0x26c3ce4bcf05f1518636b0d6e8e2d84d0f5de27de470825571f821c3773bd598"
-    },
-    {
-      "date": "2025-01-22",
       "value": 3800,
       "token": "USDC",
       "tokenAmount": 3800,
@@ -3563,6 +3554,15 @@
       "direction": "in",
       "blockNumber": "0x186cb01",
       "transactionHash": "0x34573c37f8e12a75bfe6e5f0a2a32cd72a63d6312461815cad818f0db0e29ae9"
+    },
+    {
+      "date": "2025-01-27",
+      "value": 94.891427,
+      "token": "USDC",
+      "tokenAmount": 94.891427,
+      "direction": "in",
+      "blockNumber": "0x186d30d",
+      "transactionHash": "0xdf0151c15c80bdf1f2a4a3ae76391a942f6d401384cb1959134f8a6e8f67ddf5"
     },
     {
       "date": "2025-02-19",
@@ -20393,8 +20393,71 @@
       "direction": "in",
       "blockNumber": "0x1d2004d",
       "transactionHash": "0x7899fe02764af779151795a5e7120c33de88d77abaac6a8b9016a0a8dd38f8a4"
+    },
+    {
+      "date": "2025-05-21",
+      "value": 10.569861,
+      "token": "USDC",
+      "tokenAmount": 10.569861,
+      "direction": "in",
+      "blockNumber": "0x1d20679",
+      "transactionHash": "0xf8e5e5d716d9e17571f2dcc822f903d16b6605a8a8d0670a0b9a48a1d5eaea42"
+    },
+    {
+      "date": "2025-05-21",
+      "value": 400,
+      "token": "USDC",
+      "tokenAmount": 400,
+      "direction": "in",
+      "blockNumber": "0x1d20730",
+      "transactionHash": "0xf30eb030e96626e9f475bc3ba3d266038db0047ee59fd0b4dc0b54ff6da03cd6"
+    },
+    {
+      "date": "2025-05-21",
+      "value": 3000,
+      "token": "USDC",
+      "tokenAmount": 3000,
+      "direction": "in",
+      "blockNumber": "0x1d21299",
+      "transactionHash": "0xb73074621f4a14aede6ac1a7da989299f62ca2f8c6883bc75e44865364d40c88"
+    },
+    {
+      "date": "2025-05-21",
+      "value": 2000,
+      "token": "USDC",
+      "tokenAmount": 2000,
+      "direction": "in",
+      "blockNumber": "0x1d21567",
+      "transactionHash": "0xb72583a1b700004fdf1c96ab2b2af69f2a69b77218289bc3494d6d2b5cec856f"
+    },
+    {
+      "date": "2025-05-21",
+      "value": 14.46,
+      "token": "USDC",
+      "tokenAmount": 14.46,
+      "direction": "in",
+      "blockNumber": "0x1d2160c",
+      "transactionHash": "0xcfc8353701063d97e8dcc6dfd191145f9b1711713518d3a73b0dab6a47ab67b3"
+    },
+    {
+      "date": "2025-05-21",
+      "value": 51.779269,
+      "token": "USDC",
+      "tokenAmount": 51.779269,
+      "direction": "in",
+      "blockNumber": "0x1d216d2",
+      "transactionHash": "0x4c3a159690fbb0f27cd798530c14aa832cba8016c3ee95e9e9dbb81ce2d72d2e"
+    },
+    {
+      "date": "2025-05-21",
+      "value": null,
+      "token": "HYPERLIQUID-NFT",
+      "tokenAmount": null,
+      "direction": "in",
+      "blockNumber": "0x1d21d56",
+      "transactionHash": "0x74aaa6a7cba2a68f36e2d1d1bb9e97c3e974d9c50cce4370f0e60554f48869ea"
     }
   ],
-  "expires": 1748475962782,
-  "lastUpdated": 1747871162782
+  "expires": 1748489868307,
+  "lastUpdated": 1747885068307
 }

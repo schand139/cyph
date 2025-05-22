@@ -1,5 +1,6 @@
 import { format, startOfDay, startOfWeek, startOfMonth, parseISO } from 'date-fns';
 import { getData, dataExists, saveData } from '../utils/unifiedCacheManager.js';
+import preloadCache from '../scripts/preloadCache.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -51,10 +52,11 @@ export default async function handler(req, res) {
       try {
         console.log(`Running in Vercel environment, attempting to fetch from Blob storage: ${BLOB_CACHE_KEY}`);
         
-        // TODO: This is a temporary hardcoded URL that needs to be fixed
-        // We should be using the getDownloadUrl function from @vercel/blob instead
-        const url = 'https://k9stbjpeo6edojyd.public.blob.vercel-storage.com/volume-0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD-2025';
-        console.log(`Using hardcoded Blob URL: ${url}`);
+        // DEMO: This is a hardcoded URL for the manually uploaded blob file
+        // For the take-home assessment demo, we've manually uploaded the cache file to Blob storage
+        // This specific URL was provided from a previous successful deployment
+        const url = 'https://k9stbjpeo6edojyd.public.blob.vercel-storage.com/volume-0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD-2025-coFQM3As9ohm7gbUwE8tLiSxL6GsZT.json';
+        console.log(`Using hardcoded Blob URL for demo: ${url}`);
         
         try {
           // Fetch the data from the hardcoded URL
@@ -65,9 +67,61 @@ export default async function handler(req, res) {
           
           const blobData = await response.json();
           console.log(`Successfully retrieved data from Blob storage`);
+          console.log('Blob data structure:', JSON.stringify(blobData).substring(0, 500) + '...');
+          
+          // The data structure should be simplified now that we've updated the preloadCache.js
+          // But we'll still handle different possible structures for robustness
+          let dataToProcess;
+          
+          // Check if the response has the expected structure with daily/weekly/monthly arrays
+          if (blobData && Array.isArray(blobData.daily) && Array.isArray(blobData.weekly) && Array.isArray(blobData.monthly)) {
+            // This is the ideal structure - direct access to the data
+            dataToProcess = blobData;
+            console.log('Using direct data structure from Blob');
+          } else if (blobData && blobData.data && Array.isArray(blobData.data.daily)) {
+            // One level of nesting
+            dataToProcess = blobData.data;
+            console.log('Using nested data structure');
+          } else {
+            // Unknown structure, log it and try to find daily/weekly/monthly arrays
+            console.log('Unknown data structure, searching for volume data in any format');
+            
+            // Try to recursively find the data structure that contains daily/weekly/monthly arrays
+            const findVolumeData = (obj, path = '') => {
+              // If we found an object with daily, weekly, or monthly arrays, return it
+              if (obj && typeof obj === 'object') {
+                if (Array.isArray(obj.daily) || Array.isArray(obj.weekly) || Array.isArray(obj.monthly)) {
+                  console.log(`Found volume data at path: ${path}`);
+                  return obj;
+                }
+                
+                // Recursively search through all properties
+                for (const key in obj) {
+                  const result = findVolumeData(obj[key], path ? `${path}.${key}` : key);
+                  if (result) return result;
+                }
+              }
+              return null;
+            };
+            
+            // Try to find the data in the blob response
+            const foundData = findVolumeData(blobData);
+            
+            if (foundData) {
+              dataToProcess = foundData;
+              console.log('Found volume data through recursive search');
+            } else {
+              console.log('Could not find volume data in any format, using empty structure');
+              dataToProcess = {
+                daily: [],
+                weekly: [],
+                monthly: []
+              };
+            }
+          }
           
           // Process the data to fill in missing weeks
-          const processedData = processVolumeData(blobData.data, year);
+          const processedData = processVolumeData(dataToProcess, year);
           
           const result = {
             daily: processedData.daily || [],
@@ -147,11 +201,13 @@ export default async function handler(req, res) {
               weekly: processedData.weekly || [],
               monthly: processedData.monthly || [],
               source: 'blockchain',
-              lastUpdated: fileData.data.lastUpdated || new Date().toISOString()
+              lastUpdated: fileData.lastUpdated || new Date().toISOString(),
+              blockInfo: fileData.data.blockInfo || null
             };
             
             // Store in unified cache for future use (especially important for Vercel deployment)
-            await saveData(volumeCacheKey, { data: fileData.data, lastUpdated: new Date().toISOString() }, 86400); // 24 hour TTL
+            // Note: lastUpdated is now at the root level, maintained by the caching system
+            await saveData(volumeCacheKey, { data: fileData.data }, 86400); // 24 hour TTL
             
             // Store in in-memory cache and return
             apiResponseCache.set(apiCacheKey, result);
@@ -163,9 +219,50 @@ export default async function handler(req, res) {
       }
     }
     
-    // If we still don't have data, return an empty dataset with a warning
-    console.log('No volume cache found, returning empty dataset');
-    console.log('The cron job should populate this data periodically');
+    // If we still don't have data, try to generate it on-demand
+    console.log('No volume cache found, attempting to generate it on-demand');
+    
+    try {
+      // Try to preload the cache
+      console.log('Triggering preloadCache to generate volume data...');
+      const preloadResult = await preloadCache(false, wallet, year);
+      
+      if (preloadResult && preloadResult.success) {
+        console.log('Successfully preloaded cache, fetching the new data');
+        
+        // Now try to get the newly created cache data
+        if (await dataExists(volumeCacheKey)) {
+          const freshData = await getData(volumeCacheKey);
+          
+          if (freshData) {
+            console.log(`Using freshly generated cache for ${volumeCacheKey}`);
+            
+            // Process the data to fill in missing weeks
+            const processedData = processVolumeData(freshData, year);
+            
+            const result = {
+              daily: processedData.daily || [],
+              weekly: processedData.weekly || [],
+              monthly: processedData.monthly || [],
+              source: 'blockchain-fresh',
+              lastUpdated: freshData.lastUpdated || new Date().toISOString(),
+              blockInfo: freshData.blockInfo || null
+            };
+            
+            // Store in in-memory cache
+            apiResponseCache.set(apiCacheKey, result);
+            return res.status(200).json(result);
+          }
+        }
+      } else {
+        console.log('Failed to preload cache:', preloadResult?.error || 'Unknown error');
+      }
+    } catch (preloadError) {
+      console.error('Error while trying to preload cache:', preloadError);
+    }
+    
+    // If we still couldn't generate data, return an empty dataset with a warning
+    console.log('Could not generate volume data, returning empty dataset');
     
     // Return empty dataset with a warning
     const emptyResult = {
@@ -173,7 +270,7 @@ export default async function handler(req, res) {
       weekly: [],
       monthly: [],
       source: 'empty',
-      warning: 'No data available. Please run the caching script to generate data.',
+      warning: 'No data available. The system attempted to generate data but failed.',
       lastUpdated: new Date().toISOString()
     };
     
@@ -193,6 +290,8 @@ export default async function handler(req, res) {
  * @returns {Object} Processed data with filled in weeks and months
  */
 function processVolumeData(data, year) {
+  console.log('Processing volume data with input:', JSON.stringify(data).substring(0, 300) + '...');
+  
   const yearNum = parseInt(year);
   const startDate = new Date(yearNum, 0, 1); // January 1st
   const endDate = new Date(yearNum, 11, 31); // December 31st
@@ -203,6 +302,7 @@ function processVolumeData(data, year) {
   
   // Process daily data (keep as is)
   const dailyData = data.daily || [];
+  console.log('Raw daily data:', JSON.stringify(dailyData).substring(0, 300) + '...');
   
   // Process weekly data (fill in missing weeks)
   const weeklyData = data.weekly || [];

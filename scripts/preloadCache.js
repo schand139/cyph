@@ -15,266 +15,264 @@ const isVercel = process.env.VERCEL === '1';
 const environment = isVercel ? 'vercel' : 'local';
 
 // Cypher master wallet address
-const CYPHER_MASTER_WALLET = '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
+const CYPHER_MASTER_WALLET = process.env.CYPHER_MASTER_WALLET || '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
 
 /**
  * Preload cache for specified wallets and years
  * This can be run during application startup or by a scheduled job
  * to ensure the cache is ready before any API calls are made
+ * 
+ * @param {boolean} forceRefresh - Whether to force a complete refresh of the cache
+ * @param {string} walletAddress - Wallet address to preload cache for
+ * @param {string} year - Year to preload cache for
+ * @returns {Object} Result object with success status, message, and blobUrl if uploaded
  */
-export default async function preloadCache(forceUpdateTest = false) {
+export default async function preloadCache(forceRefresh = false, walletAddress, year) {
   console.log(`Starting cache preload (environment: ${environment})...`);
   
-  // Define the wallet and year we're working with
-  const walletAddress = process.env.CYPHER_MASTER_WALLET || '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD';
-  const year = '2025';
+  // Use the provided wallet address and year or fallback to defaults
+  walletAddress = walletAddress || CYPHER_MASTER_WALLET;
+  year = year || '2025';
   const volumeCacheKey = `volume-${walletAddress}-${year}`;
-  
-  // No forced update in production
   
   try {
     // First check if we have data in the unified cache manager
+    let cachedData = null;
+    let lastProcessedBlock = null;
+    
     if (await dataExists(volumeCacheKey)) {
-      const cachedData = await getData(volumeCacheKey);
+      cachedData = await getData(volumeCacheKey);
       console.log(`Cache hit for key: ${volumeCacheKey}, last updated: ${new Date(cachedData?.lastUpdated || 0).toISOString()}`);
       
-      // Check if the cache is recent (less than 24 hours old)
+      // Check if the cache is recent (less than 1 minute old)
       const lastUpdated = new Date(cachedData?.lastUpdated || 0);
       const now = new Date();
       const cacheAge = now - lastUpdated;
       
-      if (cacheAge < 24 * 60 * 60 * 1000) {
-        console.log(`Cache for ${walletAddress} (${year}) is recent, skipping update`);
-        console.log('Cache preload completed');
-        return;
-      } else {
-        console.log(`Cache in unified manager is stale (${Math.floor(cacheAge / (60 * 60 * 1000))} hours old), will check for fresh data`);
-      }
-    }
-  } catch (error) {
-    console.error(`Error checking cache: ${error.message}`);
-    // Continue execution to attempt to refresh the cache
-  }
-  
-  // In local environment, we can check for Alchemy-generated cache files
-  if (!isVercel) {
-    const cacheDir = path.join(__dirname, '..', 'cache');
-    const cacheFilePath = path.join(cacheDir, `${volumeCacheKey}.json`);
-    
-    // Create cache directory if it doesn't exist
-    if (!fs.existsSync(cacheDir)) {
-      fs.mkdirSync(cacheDir, { recursive: true });
-    }
-    
-    // Check if we have an Alchemy-generated cache file
-    if (fs.existsSync(cacheFilePath)) {
-      try {
-        const fileData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
-        const lastUpdated = new Date(fileData?.data?.lastUpdated || 0);
-        const now = new Date();
-        const cacheAge = now - lastUpdated;
+      if (cacheAge < 900000 && !forceRefresh) { // 15 minutes = 900000 ms
+        console.log(`Cache is recent (${Math.round(cacheAge / 60000)}m old), skipping refresh`);
         
-        // Check if the cache is recent (less than 24 hours old)
-        if (cacheAge < 24 * 60 * 60 * 1000) {
-          console.log(`Cache file for ${walletAddress} (${year}) is recent, using it`);
-          
-          // Store the file data in the unified cache manager
-          await saveData(volumeCacheKey, fileData, 86400); // 24 hour TTL
-          console.log(`Stored file data in unified cache for key: ${volumeCacheKey}`);
-          
-          console.log('Cache preload completed');
-          return;
-        } else {
-          console.log(`Cache file for ${walletAddress} (${year}) is stale (${Math.floor(cacheAge / (60 * 60 * 1000))} hours old), will update`);
-        }
-      } catch (error) {
-        console.error(`Error reading cache file: ${error.message}`);
+        // Return the existing cache info
+        return {
+          success: true,
+          message: 'Using recent cache, skipped refresh',
+          blobUrl: isVercel ? `https://blob.vercel-storage.com/${volumeCacheKey}` : null,
+          cacheInfo: {
+            lastUpdated: cachedData.lastUpdated,
+            lastProcessedBlock: cachedData.blockInfo?.lastProcessedBlock,
+            processingDate: cachedData.blockInfo?.processingDate,
+            dailyEntries: cachedData.daily?.length || 0,
+            weeklyEntries: cachedData.weekly?.length || 0,
+            monthlyEntries: cachedData.monthly?.length || 0
+          }
+        };
+      }
+      
+      // Extract lastProcessedBlock from cache if available
+      if (cachedData.blockInfo && cachedData.blockInfo.lastProcessedBlock) {
+        lastProcessedBlock = cachedData.blockInfo.lastProcessedBlock;
+        console.log(`Found lastProcessedBlock in cache: ${lastProcessedBlock}`);
       }
     } else {
-      console.log(`No cache file found for ${walletAddress} (${year})`);
+      console.log(`No cache found for key: ${volumeCacheKey}, will create new cache`);
     }
-  }
-
-  // If we reach this point and we're in Vercel, we need to handle it differently
-  // The full blockchain data fetch would time out the serverless function
-  if (isVercel) {
-    try {
-      console.log('Running in Vercel environment, preparing dataset for Blob storage');
-      
-      // Check if we have a cache file in the repo that we can use
-      const cacheDir = path.join(__dirname, '..', 'cache');
-      const cacheFilePath = path.join(cacheDir, `${volumeCacheKey}.json`);
-      
-      let dataToUpload;
-      
-      if (fs.existsSync(cacheFilePath)) {
-        // Use the existing cache file with real data
-        console.log(`Found existing cache file for ${volumeCacheKey} in Vercel environment`);
-        const fileData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
-        
-        // Log the structure to help with debugging
-        console.log(`Cache file structure: ${JSON.stringify(fileData).substring(0, 200)}...`);
-        
-        // Extract the actual volume data from the nested structure
-        const volumeData = fileData.data?.data?.data || fileData.data?.data || fileData.data || fileData;
-        
-        // Log what we found
-        console.log(`Found ${volumeData.monthly?.length || 0} months of data in cache file`);
-        
-        // Use this data for upload
-        dataToUpload = fileData;
-      } else {
-        // Create a dataset with realistic sample data
-        console.log('No cache file found, creating sample dataset with realistic values');
-        
-        const currentDate = new Date();
-        const currentYear = parseInt(year);
-        const currentMonth = currentDate.getMonth();
-        
-        // Create sample data with realistic volumes
-        const sampleData = {
-          daily: [],
-          weekly: [],
-          monthly: []
-        };
-        
-        // Sample monthly volumes (in USD) that look realistic
-        const monthlyVolumes = [
-          832495830, // Jan
-          180099396, // Feb
-          4125050,   // Mar
-          4999442,   // Apr
-          7693220    // May
-        ];
-        
-        // Add months from January to current month with realistic volumes
-        for (let month = 0; month <= Math.min(currentMonth, 4); month++) {
-          const monthDate = new Date(currentYear, month, 1);
-          const monthStr = monthDate.toISOString().split('T')[0]; // Format as YYYY-MM-DD
-          
-          sampleData.monthly.push({
-            date: monthStr,
-            volume: monthlyVolumes[month] || 1000000 // Use sample data or fallback
-          });
-        }
-        
-        // Create the data structure for upload
-        dataToUpload = { 
-          data: {
-            data: {
-              data: sampleData,
-              lastUpdated: new Date().toISOString()
-            }
-          }, 
-          lastUpdated: new Date().toISOString() 
-        };
-        
-        console.log(`Created sample dataset for ${year} with ${sampleData.monthly.length} months of realistic data`);
-      }
-      
-      // First save to the standard cache for immediate use
-      await saveData(volumeCacheKey, dataToUpload, 86400); // 24 hour TTL
-      
-      // Then upload to Vercel Blob storage for persistent storage
-      // Check if we have the BLOB_READ_WRITE_TOKEN environment variable
-      if (!process.env.BLOB_READ_WRITE_TOKEN) {
-        console.log('BLOB_READ_WRITE_TOKEN environment variable not found, skipping Blob storage upload');
-        console.log('To enable Blob storage, add the BLOB_READ_WRITE_TOKEN to your Vercel environment variables');
-      } else {
-        try {
-          console.log(`Uploading data to Vercel Blob storage with key: ${volumeCacheKey}`);
-          const jsonData = JSON.stringify(dataToUpload);
-          
-          // Upload to Vercel Blob storage
-          const { url } = await put(volumeCacheKey, jsonData, {
-            contentType: 'application/json',
-            access: 'public', // Make it public since we're using it as a cache
-            allowOverwrite: true, // Allow overwriting existing blobs
-          });
-          
-          console.log(`Successfully uploaded data to Vercel Blob storage: ${url}`);
-        } catch (blobError) {
-          console.error(`Error uploading to Vercel Blob storage: ${blobError.message}`);
-          console.log('Continuing with standard cache only');
-        }
-      }
-      
-      console.log('Cache preload completed for Vercel environment');
-      return;
-    } catch (error) {
-      console.error(`Error in Vercel environment handling: ${error.message}`);
-      return;
-    }
-  }
-  
-  // If we're in local environment and reach this point, we need to run the caching job
-  try {
-    console.log('Running caching job to fetch blockchain data...');
     
-    // Use alchemyTest.js script for better data processing
+    // If we're in local environment or need to refresh, run the caching job
     try {
-      console.log('Running alchemyTest.js for data processing...');
+      console.log('Running caching job to fetch blockchain data...');
       
-      // We need to properly import the fetchTransactionsWithAlchemy function
-      const alchemyModule = await import('./alchemyTest.js');
+      // Track the result of our fetch operation
+      let fetchResult = null;
       
-      // Check if the module was imported correctly
-      if (alchemyModule && typeof alchemyModule.fetchTransactionsWithAlchemy === 'function') {
-        // If it's a named export (which is what we expect after our fix)
-        await alchemyModule.fetchTransactionsWithAlchemy(walletAddress, year, true);
-      } else if (alchemyModule && typeof alchemyModule.default === 'function') {
-        // If it's the default export
-        await alchemyModule.default(walletAddress, year, true);
-      } else {
-        // Try to call the function directly (it might be attached to the module)
-        let foundFunction = false;
+      if (lastProcessedBlock && !forceRefresh) {
+        // If we have a lastProcessedBlock and don't need to force refresh, use incrementalFetch
+        console.log(`Using incremental fetch from block ${lastProcessedBlock}`);
         
-        for (const key of Object.keys(alchemyModule)) {
-          if (typeof alchemyModule[key] === 'function' && key.includes('fetch')) {
-            await alchemyModule[key](walletAddress, year, true);
-            foundFunction = true;
-            break;
+        try {
+          // Import the incrementalFetch module for incremental updates
+          console.log('Running incrementalFetch.js for incremental data processing...');
+          const incrementalModule = await import('./incrementalFetch.js');
+          
+          if (incrementalModule && typeof incrementalModule.default === 'function') {
+            fetchResult = await incrementalModule.default(walletAddress, year, lastProcessedBlock);
+            console.log('Incremental fetch completed successfully');
+          } else {
+            console.error('ERROR: Could not find the default export in incrementalFetch.js');
+            throw new Error('Could not find the default export in incrementalFetch.js');
           }
+        } catch (error) {
+          console.error(`Error importing or running incrementalFetch.js: ${error.message}`);
+          throw error;
         }
+      } else {
+        // If we don't have a lastProcessedBlock or need to force refresh, use initialCacheFetch
+        console.log(`${forceRefresh ? 'Force refresh requested' : 'No lastProcessedBlock found'}, using initial cache fetch`);
         
-        if (!foundFunction) {
-          console.error('ERROR: Could not find a suitable function to call in alchemyTest.js');
+        try {
+          // Import the initialCacheFetch module for full data load
+          console.log('Running initialCacheFetch.js for full data processing...');
+          const initialModule = await import('./initialCacheFetch.js');
+          
+          if (initialModule && typeof initialModule.default === 'function') {
+            fetchResult = await initialModule.default(forceRefresh, walletAddress, year);
+            console.log('Initial cache fetch completed successfully');
+          } else {
+            console.error('ERROR: Could not find the default export in initialCacheFetch.js');
+            throw new Error('Could not find the default export in initialCacheFetch.js');
+          }
+        } catch (error) {
+          console.error(`Error importing or running initialCacheFetch.js: ${error.message}`);
+          throw error;
         }
       }
       
       // Check if the cache file was created
-      const cacheDir = path.join(__dirname, '..', 'cache');
-      const cacheFilePath = path.join(cacheDir, `${volumeCacheKey}.json`);
+      const cacheFile = path.join(__dirname, '..', 'cache', `volume-${walletAddress}-${year}.json`);
+      let blobUrl = null;
+      let cacheInfo = null;
       
-      if (fs.existsSync(cacheFilePath)) {
-        console.log(`Successfully created cache file: ${cacheFilePath}`);
+      if (fs.existsSync(cacheFile)) {
+        console.log(`Cache file created: ${cacheFile}`);
         
-        // Read the file and store it in the unified cache manager
-        const fileData = JSON.parse(fs.readFileSync(cacheFilePath, 'utf8'));
-        await saveData(volumeCacheKey, fileData, 86400); // 24 hour TTL
-        console.log(`Stored file data in unified cache for key: ${volumeCacheKey}`);
+        // Read the cache file to get information about it
+        try {
+          const cacheData = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+          cacheInfo = {
+            lastUpdated: cacheData.lastUpdated,
+            lastProcessedBlock: cacheData.blockInfo?.lastProcessedBlock,
+            processingDate: cacheData.blockInfo?.processingDate,
+            dailyEntries: cacheData.daily?.length || 0,
+            weeklyEntries: cacheData.weekly?.length || 0,
+            monthlyEntries: cacheData.monthly?.length || 0
+          };
+        } catch (readError) {
+          console.error(`Error reading cache file: ${readError.message}`);
+        }
+        
+        // If we're in Vercel environment, upload to Blob storage
+        if (isVercel && process.env.BLOB_READ_WRITE_TOKEN) {
+          try {
+            // Check if there's already a recent version in Blob storage
+            // This is an additional check specifically for Blob storage
+            try {
+              const blobUrl = `https://blob.vercel-storage.com/${volumeCacheKey}`;
+              const response = await fetch(blobUrl, { method: 'HEAD' });
+              
+              if (response.ok) {
+                // Get the last-modified header
+                const lastModified = response.headers.get('last-modified');
+                if (lastModified) {
+                  const blobLastModified = new Date(lastModified);
+                  const now = new Date();
+                  const blobAge = now - blobLastModified;
+                  
+                  if (blobAge < 900000 && !forceRefresh) { // Less than 15 minutes old
+                    console.log(`Blob storage cache is recent (${Math.round(blobAge / 1000)}s old), skipping upload`);
+                    return {
+                      success: true,
+                      message: 'Using recent Blob storage cache, skipped upload',
+                      blobUrl,
+                      cacheInfo: {
+                        lastUpdated: blobLastModified.toISOString(),
+                        source: 'blob-storage'
+                      }
+                    };
+                  }
+                }
+              }
+            } catch (blobCheckError) {
+              console.log('Error checking Blob storage freshness:', blobCheckError.message);
+              // Continue with upload if check fails
+            }
+            
+            console.log('Uploading cache to Vercel Blob storage...');
+            const fileData = fs.readFileSync(cacheFile, 'utf8');
+            
+            // Check if this is a pre-existing cache file from the repository
+            const cacheData = JSON.parse(fileData);
+            const isPreExistingCache = !cacheData.blobOrigin;
+            
+            if (isPreExistingCache) {
+              console.log('Found pre-existing cache file from repository, marking as repository origin');
+              // Add a marker to indicate this was originally from the repository
+              cacheData.blobOrigin = 'repository';
+              cacheData.firstVercelUpload = new Date().toISOString();
+            }
+            
+            // Always update the lastUpdated timestamp when uploading to Blob
+            cacheData.lastUpdated = new Date().toISOString();
+            
+            // Upload to Vercel Blob storage (with origin marker if applicable)
+            const dataToUpload = JSON.stringify(cacheData, null, 2);
+            const { url } = await put(volumeCacheKey, dataToUpload, {
+              contentType: 'application/json',
+              access: 'public' // Make it public for easy access
+            });
+            
+            console.log(`Uploaded volume data to Blob storage: ${url}`);
+            console.log(`Cache origin: ${isPreExistingCache ? 'repository' : 'runtime generated'}`);
+            blobUrl = url;
+          } catch (blobError) {
+            console.error(`Error uploading to Blob storage: ${blobError.message}`);
+          }
+        }
+        
+        // Return success with cache info and blob URL if available
+        return {
+          success: true,
+          message: 'Cache preloaded successfully',
+          blobUrl,
+          cacheInfo
+        };
       } else {
-        throw new Error('Cache file was not created by alchemyTest.js');
+        console.log(`Cache file not created: ${cacheFile}`);
+        return {
+          success: false,
+          error: 'Cache file was not created',
+          cacheInfo: null
+        };
       }
-    } catch (alchemyError) {
-      console.error(`Error using alchemyTest.js: ${alchemyError.message}`);
+    } catch (fetchError) {
+      console.error(`Error using blockchain data fetch scripts: ${fetchError.message}`);
       console.log('Falling back to cacheTransactions.js...');
       
-      // Fall back to the original caching method
-      const { runCachingJob } = await import('./cacheTransactions.js');
-      await runCachingJob(walletAddress, year);
+      try {
+        // Fall back to the original caching method
+        const { runCachingJob } = await import('./cacheTransactions.js');
+        await runCachingJob(walletAddress, year);
+        
+        // Check if the fallback created a cache file
+        const cacheFile = path.join(__dirname, '..', 'cache', `volume-${walletAddress}-${year}.json`);
+        if (fs.existsSync(cacheFile)) {
+          return {
+            success: true,
+            message: 'Cache preloaded using fallback method',
+            cacheInfo: {
+              source: 'fallback'
+            }
+          };
+        } else {
+          return {
+            success: false,
+            error: 'Fallback caching method failed to create cache file'
+          };
+        }
+      } catch (fallbackError) {
+        console.error(`Error using fallback caching method: ${fallbackError.message}`);
+        return {
+          success: false,
+          error: `Both primary and fallback caching methods failed: ${fetchError.message}, ${fallbackError.message}`
+        };
+      }
     }
-    
-    console.log(`Caching job completed for ${walletAddress} (${year})`);
   } catch (error) {
     console.error(`Error running caching job: ${error.message}`);
     console.error('Cache preload failed, API will use existing data or return empty dataset');
+    return {
+      success: false,
+      error: `Error running caching job: ${error.message}`
+    };
+  } finally {
+    console.log(`Cache preload completed for ${walletAddress} (${year})`);
   }
-  
-  console.log('Cache preload completed');
-}
-
-// If this script is run directly (not imported)
-if (import.meta.url === import.meta.main) {
-  preloadCache().catch(console.error);
 }

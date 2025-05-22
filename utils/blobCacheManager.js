@@ -1,5 +1,5 @@
 // Vercel Blob cache manager
-import { put, get, del, list } from '@vercel/blob';
+import { put } from '@vercel/blob';
 
 /**
  * Save data to Vercel Blob cache
@@ -41,17 +41,19 @@ export async function saveToBlobCache(key, data, ttl = 3600) {
  */
 export async function getFromBlobCache(key, ignoreExpiry = false) {
   try {
-    // Get the blob content
-    const blob = await get(`${key}.json`);
+    // Construct the URL for the blob
+    const blobUrl = `https://blob.vercel-storage.com/${key}.json`;
     
-    if (!blob) {
+    // Fetch the blob content
+    const response = await fetch(blobUrl);
+    
+    if (!response.ok) {
       console.log(`No cache found in Blob for key: ${key}`);
       return null;
     }
     
-    // Convert blob to text and parse JSON
-    const text = await blob.text();
-    const cacheData = JSON.parse(text);
+    // Parse the JSON data
+    const cacheData = await response.json();
     
     // Check if cache has expired
     if (!ignoreExpiry && cacheData.expires < Date.now()) {
@@ -74,17 +76,13 @@ export async function getFromBlobCache(key, ignoreExpiry = false) {
  */
 export async function blobCacheExists(key) {
   try {
-    const blob = await get(`${key}.json`);
+    // Construct the URL for the blob
+    const blobUrl = `https://blob.vercel-storage.com/${key}.json`;
     
-    if (!blob) {
-      return false;
-    }
+    // Check if the blob exists by making a HEAD request
+    const response = await fetch(blobUrl, { method: 'HEAD' });
     
-    const text = await blob.text();
-    const cacheData = JSON.parse(text);
-    
-    // Return true if cache exists and is not expired
-    return cacheData.expires > Date.now();
+    return response.ok;
   } catch (error) {
     console.error(`Error checking Blob cache existence: ${error.message}`);
     return false;
