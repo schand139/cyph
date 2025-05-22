@@ -74,16 +74,17 @@ export default async function handler(req, res) {
     
     // Check if Alchemy SDK is available
     if (!alchemy) {
-      console.log('Alchemy SDK not available, using mock data');
-      return generateMockAnalysis(address, res);
+      console.log('Alchemy SDK not available, API key may be missing');
+      return res.status(500).json({
+        error: 'Alchemy API key is missing or invalid',
+        address,
+        counterparties: [],
+        source: 'error'
+      });
     }
     
-    // For the demo, we'll use mock data if this is the Cypher master wallet
-    // This ensures we have good data to show even if there are API issues
-    if (address.toLowerCase() === '0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD'.toLowerCase()) {
-      console.log('Using mock data for the Cypher master wallet to ensure good demo data');
-      return generateMockAnalysis(address, res);
-    }
+    // Removed mock data fallback for Cypher master wallet to debug API issues
+    console.log('Attempting to fetch real data for all wallets, including Cypher master wallet');
     
     try {
       // Set time range based on timeframe parameter
@@ -165,6 +166,22 @@ export default async function handler(req, res) {
         });
         
         console.log(`Found ${incomingTransfers.transfers.length} incoming transfers`);
+        
+        // Process all transactions and count counterparties
+        const allTransfers = [...assetTransfers.transfers, ...incomingTransfers.transfers];
+        console.log(`Processing ${allTransfers.length} total transfers`);
+        
+        if (allTransfers.length === 0) {
+          console.log('No transfers found for this wallet, returning empty results for debugging');
+          return res.status(200).json({
+            address,
+            counterparties: [],
+            timeframe,
+            startDate,
+            endDate,
+            source: 'api'
+          });
+        }
         
         // Process incoming transfers
         for (const transfer of incomingTransfers.transfers) {
@@ -258,8 +275,13 @@ export default async function handler(req, res) {
       return res.status(200).json(result);
     } catch (blockchainError) {
       console.error('Error fetching blockchain data:', blockchainError);
-      console.log('Falling back to mock data due to error');
-      return generateMockAnalysis(address, res);
+      console.log('Returning error information for debugging');
+      return res.status(500).json({
+        error: 'API error: ' + blockchainError.message,
+        address,
+        counterparties: [],
+        source: 'error'
+      });
     }
   } catch (error) {
     console.error('Error analyzing wallet:', error);

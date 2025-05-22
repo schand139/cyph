@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { generateMockCounterparties } from '../utils/dataProcessing';
 import { CYPHER_MASTER_WALLET } from '../utils/constants';
 import type { Counterparty } from '../types';
 
@@ -39,35 +38,36 @@ const WalletAnalysis = () => {
           if (data && data.counterparties) {
             console.log('Setting counterparties from API:', data.counterparties);
             setCounterparties(data.counterparties);
-            // Data successfully fetched from API
+            setIsLoading(false);
+            return;
+          } else if (data.error) {
+            // Show API error in the UI
+            console.error('API returned an error:', data.error);
+            setError(data.error);
+            setCounterparties([]);
+            setIsLoading(false);
+            return;
+          } else {
+            // API returned empty results
+            console.log('API returned empty results');
+            setCounterparties([]);
             setIsLoading(false);
             return;
           }
+        } else {
+          console.error('API request failed with status:', response.status);
+          setError(`API request failed with status: ${response.status}`);
+          setCounterparties([]);
+          setIsLoading(false);
+          return;
         }
-        console.log('API request failed or returned invalid data, falling back to mock data');
       } catch (apiError) {
-        console.log('API request error, falling back to mock data:', apiError);
+        console.error('API request error:', apiError);
+        setError(`API request error: ${apiError instanceof Error ? apiError.message : String(apiError)}`);
+        setCounterparties([]);
+        setIsLoading(false);
+        return;
       }
-      
-      // Fallback to mock data if API fails
-      console.log('Using mock data');
-      const mockData = generateMockCounterparties();
-      // Ensure the data matches the Counterparty type
-      const typedData = mockData.map(item => ({
-        ...item,
-        type: item.type as 'wallet' | 'contract' | 'protocol' | 'exchange'
-      }));
-      const data = { counterparties: typedData };
-      
-      console.log('Mock data generated:', data);
-      
-      if (!data || !data.counterparties) {
-        console.error('Invalid mock data format:', data);
-        throw new Error('Invalid mock data format');
-      }
-      
-      setCounterparties(data.counterparties);
-      // Using mock data
     } catch (error) {
       console.error('Error fetching counterparty data:', error);
       setError('Failed to fetch counterparty data. Please try again.');
@@ -127,7 +127,7 @@ const WalletAnalysis = () => {
               value={walletAddress}
               onChange={(e) => setWalletAddress(e.target.value)}
               placeholder="Enter Ethereum address (0x...)"
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
             />
           </div>
           <div className="flex items-end">
