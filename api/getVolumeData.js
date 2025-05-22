@@ -18,7 +18,7 @@ const isVercel = process.env.VERCEL === '1';
 
 // Blob cache key for the Vercel Blob storage
 // This should match the path you used when uploading to the Blob storage
-const BLOB_CACHE_KEY = 'volume-0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD-2025.json';
+const BLOB_CACHE_KEY = 'volume-0xcCCd218A58B53C67fC17D8C87Cb90d83614e35fD-2025';
 
 // In-memory cache for API responses (short-lived)
 const apiResponseCache = new Map();
