@@ -329,52 +329,15 @@ function processVolumeData(data, year) {
 function fillMissingWeeks(weeklyData, startDate, endDate) {
   console.log('Filling missing weeks with raw weekly data:', JSON.stringify(weeklyData));
   
-  // Create a map of existing weeks by closest Tuesday
+  // Create a map of existing weeks by date string
   const weekMap = new Map();
   
-  // First pass: Organize the data by week to handle multiple entries per week
-  const weekBuckets = new Map(); // Maps ISO week string to array of entries
-  
+  // Add all existing weekly data to the map
   weeklyData.forEach(week => {
-    if (week.volume <= 0) return; // Skip zero volume entries
-    
-    const date = new Date(week.date);
-    // Create a week key in format YYYY-WW (year and week number)
-    const weekYear = date.getFullYear();
-    const weekNum = Math.ceil((date.getDate() + new Date(weekYear, date.getMonth(), 1).getDay()) / 7);
-    const weekKey = `${weekYear}-${weekNum.toString().padStart(2, '0')}`;
-    
-    if (!weekBuckets.has(weekKey)) {
-      weekBuckets.set(weekKey, []);
+    if (week.date && week.volume !== null) {
+      weekMap.set(week.date, week.volume);
     }
-    weekBuckets.get(weekKey).push(week);
   });
-  
-  // Second pass: For each week bucket, find the total volume
-  for (const [weekKey, entries] of weekBuckets.entries()) {
-    let totalVolume = 0;
-    let representativeDate = null;
-    
-    // Calculate total volume for this week and find a representative date
-    entries.forEach(entry => {
-      totalVolume += entry.volume;
-      // Prefer dates that are Tuesday if possible
-      const entryDate = new Date(entry.date);
-      if (!representativeDate || entryDate.getDay() === 2) {
-        representativeDate = entry.date;
-      }
-    });
-    
-    // If no valid date found, use the first entry
-    if (!representativeDate && entries.length > 0) {
-      representativeDate = entries[0].date;
-    }
-    
-    if (representativeDate) {
-      weekMap.set(representativeDate, totalVolume);
-      console.log(`Week ${weekKey} with total volume ${totalVolume} represented by date ${representativeDate}`);
-    }
-  };
   
   // Create an array of all weeks in the range
   const allWeeks = [];
@@ -388,103 +351,11 @@ function fillMissingWeeks(weeklyData, startDate, endDate) {
   // Iterate through all weeks until end date
   while (currentDate <= endDate) {
     const dateStr = format(currentDate, 'yyyy-MM-dd');
-    let volume = 0;
-    let matched = false;
     
-    // Direct match by date string
-    if (weekMap.has(dateStr)) {
-      volume = weekMap.get(dateStr);
-      matched = true;
-      console.log(`Direct match for ${dateStr}, volume: ${volume}`);
-    }
+    // Check if we have data for this week
+    const volume = weekMap.has(dateStr) ? weekMap.get(dateStr) : null;
     
-    // If no direct match, try to find the closest date in same week
-    if (!matched) {
-      // Calculate the date range for this week (Tuesday to Monday)
-      const weekStart = new Date(currentDate);
-      const weekEnd = new Date(currentDate);
-      weekEnd.setDate(weekEnd.getDate() + 6); // End of the week (next Monday)
-      
-      // Find any entry that falls in this week
-      for (const [mapDate, mapVolume] of weekMap.entries()) {
-        const entryDate = new Date(mapDate);
-        
-        // Check if this entry falls within the current week
-        if (entryDate >= weekStart && entryDate <= weekEnd) {
-          volume = mapVolume;
-          matched = true;
-          console.log(`Found match in same week: ${mapDate} for week of ${dateStr}, volume: ${volume}`);
-          break;
-        }
-      }
-      
-      // If still no match, try to find close weeks (previous or next)
-      if (!matched) {
-        // Calculate week number for current date
-        const currentWeekYear = currentDate.getFullYear();
-        const currentWeekNum = Math.ceil((currentDate.getDate() + new Date(currentWeekYear, currentDate.getMonth(), 1).getDay()) / 7);
-        
-        // Look for nearby weeks with data
-        for (const [mapDate, mapVolume] of weekMap.entries()) {
-          const entryDate = new Date(mapDate);
-          const entryWeekYear = entryDate.getFullYear();
-          const entryWeekNum = Math.ceil((entryDate.getDate() + new Date(entryWeekYear, entryDate.getMonth(), 1).getDay()) / 7);
-          
-          // Check if the entry is close to our target week (1 week difference)
-          const sameYear = currentWeekYear === entryWeekYear;
-          const closeWeek = Math.abs(currentWeekNum - entryWeekNum) <= 1;
-          
-          if (sameYear && closeWeek) {
-            volume = mapVolume;
-            matched = true;
-            console.log(`Found close week: ${mapDate} near week of ${dateStr}, volume: ${volume}`);
-            break;
-          }
-          
-          // Special case for month boundaries (week 1 of next month and week 4/5 of previous)
-          const currMonth = currentDate.getMonth();
-          const entryMonth = entryDate.getMonth();
-          const monthBoundary = 
-            (currMonth !== entryMonth) && 
-            ((currentWeekNum <= 1 && entryWeekNum >= 4) || 
-             (currentWeekNum >= 4 && entryWeekNum <= 1));
-          
-          if (monthBoundary && mapVolume > 0) {
-            volume = mapVolume;
-            matched = true;
-            console.log(`Month boundary match: ${mapDate} with ${dateStr}, volume: ${volume}`);
-            break;
-          }
-        }
-      }
-    }
-    
-    // Special handling for known weeks with data based on the cache
-    // If we're in May 2025, we know we have May data but might not be matching correctly
-    const month = currentDate.getMonth();
-    const year = currentDate.getFullYear();
-    
-    if (year === 2025) {
-      if (month === 4) { // May
-        for (const week of weeklyData) {
-          const weekDate = new Date(week.date);
-          if (weekDate.getFullYear() === 2025 && weekDate.getMonth() === 4 && week.volume > 0) {
-            if (weekDate.getDate() <= 14 && currentDate.getDate() <= 14) {
-              volume = week.volume;
-              console.log(`Special May week 1-2 handling: ${week.date} -> ${dateStr}, volume: ${volume}`);
-              matched = true;
-              break;
-            } else if (weekDate.getDate() > 14 && currentDate.getDate() > 14) {
-              volume = week.volume;
-              console.log(`Special May week 3-4 handling: ${week.date} -> ${dateStr}, volume: ${volume}`);
-              matched = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-    
+    // Add the week to the result array
     allWeeks.push({
       date: dateStr,
       volume
