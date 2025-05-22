@@ -96,22 +96,21 @@ export default async function handler(req, res) {
 
 ```mermaid
 graph TD
-    subgraph User Interaction
-        A[User's Browser] -- Initiates Requests --> B(React Frontend)
+    subgraph UserInteraction["User Interaction"]
+        A[User's Browser] -->|"Initiates Requests"| B(React Frontend)
     end
 
-    subgraph Vercel Hosted Services
-        B -- API Calls (e.g., /api/getVolumeData) --> C(Vercel Serverless Functions)
-        C -- 1. Check/Read Cache (fast access) --> D(Vercel Blob Storage)
-        C -- 2. If Cache Stale/Missing --> E[Alchemy RPC / Base Chain]
-        C -- 3. Fetch Token Prices (if needed) --> F[Aerodrome Finance / Other DEX]
-        E -- Raw Blockchain Data --> C
-        F -- Token Prices --> C
-        C -- 4. Update Cache (for future requests) --> D
+    subgraph VercelHostedServices["Vercel Hosted Services"]
+        B -->|"API Calls"| C(Vercel Serverless Functions)
+        C -->|"Check and Update Cache"| D(Vercel Blob Storage)
+        C -->|"If Cache Update needed"| E[Alchemy RPC / Base Chain]
+        C -->|"Fetch Token Prices"| F[Aerodrome Finance / Other DEX]
+        E -->|"Raw Blockchain Data"| C
+        F -->|"Token Prices"| C
     end
 
-    C -- Returns Processed Data --> B
-    B -- Renders Visualizations --> A
+    C -->|"Returns Processed Data"| B
+    B -->|"Renders Visualizations"| A
 
     style A fill:#DCE8F7,stroke:#333,stroke-width:2px
     style B fill:#E6F7D4,stroke:#333,stroke-width:2px
