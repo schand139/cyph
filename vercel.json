@@ -2,10 +2,6 @@
   "version": 2,
   "builds": [
     {
-      "src": "api-server.js",
-      "use": "@vercel/node"
-    },
-    {
       "src": "api/**/*.js",
       "use": "@vercel/node"
     }
@@ -14,10 +10,6 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/api-server.js"
     }
   ],
   "crons": [
