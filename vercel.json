@@ -1,5 +1,8 @@
 {
   "version": 2,
+  "framework": "vite",
+  "buildCommand": "npm run build:all",
+  "outputDirectory": "dist",
   "builds": [
     {
       "src": "api/**/*.js",
@@ -10,6 +13,10 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
     }
   ],
   "crons": [
