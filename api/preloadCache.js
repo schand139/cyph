@@ -33,6 +33,7 @@ export default async function handler(req, res) {
         const { url } = await put(volumeCacheKey + '.json', jsonData, {
           contentType: 'application/json',
           access: 'public', // Make it public since we're using it as a cache
+          allowOverwrite: true, // Allow overwriting existing blobs
         });
         
         console.log(`Successfully uploaded data to Vercel Blob storage: ${url}`);

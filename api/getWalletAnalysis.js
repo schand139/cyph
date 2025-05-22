@@ -1,14 +1,48 @@
-import { createPublicClient, http } from 'viem';
-import { base } from 'viem/chains';
+import { Alchemy, Network } from 'alchemy-sdk';
+import * as dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Get API key from environment variables
+const API_KEY = process.env.ALCHEMY_API_KEY;
+if (!API_KEY) {
+  console.error('Warning: ALCHEMY_API_KEY not found in environment variables, will use mock data');
+}
+
+// Configure Alchemy SDK
+const alchemy = API_KEY ? new Alchemy({
+  apiKey: API_KEY,
+  network: Network.BASE_MAINNET
+}) : null;
 
 // Known protocols and exchanges on Base chain
 const KNOWN_ADDRESSES = {
+  // Bridges
   '0x3154Cf16ccdb4C6d922629664174b904d80F2C35': { name: 'Base Bridge', type: 'protocol' },
+  '0x49048044D57e1C92A77f79988d21Fa8fAF74E97e': { name: 'Base Bridge (Official)', type: 'protocol' },
+  '0x866E82a600A1414e583f7F13623F1aC5d58b0Afa': { name: 'Base Bridge: L1 Bridge', type: 'protocol' },
+  
+  // DEXes
   '0xCF2A95F5783a5249d2A56Bce4B3d1024726d5D5A': { name: 'Aerodrome Router', type: 'protocol' },
   '0xbf59aac6c63c9a2b67fe5d8214a17ab8b1e33a1a': { name: 'Uniswap Universal Router', type: 'protocol' },
+  '0x4752ba5DBc23F44D41617558Ad04F2AEe73F1e96': { name: 'Uniswap V3 Router', type: 'protocol' },
   '0x2626664c2603336E57B271c5C0b26F421741e481': { name: 'Coinbase', type: 'exchange' },
   '0x3a0C2Ba54D6CBd3121F01b96dFd20e99D1696C9D': { name: 'Binance', type: 'exchange' },
   '0x0000000000A3A1f1D6b7D8cB9fFF98eC5f2C1e7b8': { name: 'Curve Finance', type: 'protocol' },
+  '0xFD0E9DaE3D7E2553d25Ff15640C9b576dD9e2A6C': { name: 'Balancer', type: 'protocol' },
+  
+  // Lending Protocols
+  '0x8c45969D177B866E43B3acf4D3fA06a9A8F7C5F6': { name: 'Aave V3', type: 'protocol' },
+  '0x1a0ad011913A150f69f6A19DF447A0CfD9551054': { name: 'Compound', type: 'protocol' },
+  
+  // NFT Marketplaces
+  '0x00000000000000ADc04C56Bf30aC9d3c0aAF14dC': { name: 'OpenSea', type: 'protocol' },
+  
+  // Other Popular Protocols
+  '0x6b75d8AF000000e20B7a7DDf000Ba900b4009A80': { name: 'Chainlink', type: 'protocol' },
+  '0x4200000000000000000000000000000000000010': { name: 'Base Token', type: 'protocol' },
+  '0x4200000000000000000000000000000000000006': { name: 'WETH', type: 'protocol' },
 };
 
 // Cache for wallet analysis results
@@ -38,117 +72,149 @@ export default async function handler(req, res) {
       return res.status(200).json(walletAnalysisCache.get(cacheKey));
     }
     
-    // Create client for Base chain
-    const client = createPublicClient({
-      chain: base,
-      transport: http('https://mainnet.base.org'),
-    });
+    // Check if Alchemy SDK is available
+    if (!alchemy) {
+      console.log('Alchemy SDK not available, using mock data');
+      return generateMockAnalysis(address, res);
+    }
     
     try {
-      // Log chain connection details
-      try {
-        const chainId = await client.getChainId();
-        console.log(`Connected to chain ID: ${chainId}`);
-        
-        const currentBlock = await client.getBlockNumber();
-        console.log(`Current block number: ${currentBlock}`);
-      } catch (connectionError) {
-        console.error('Error checking chain connection:', connectionError);
-      }
-      
-      // Calculate block numbers for the time range
-      // This is a simplified approach - in production, you'd use a more accurate block time estimation
-      const blocksPerDay = 43200;
-      let fromBlock;
-      
-      if (timeframe === '2023') {
-        // For 2023, use a fixed block range
-        // Base chain launched in July 2023, so we'll use a conservative estimate
-        // Starting from around block 1,000,000 (August 2023)
-        fromBlock = BigInt(1000000);
-      } else {
-        // Default to last 90 days
-        const ninetyDaysInBlocks = 90 * blocksPerDay;
-        fromBlock = currentBlock - BigInt(ninetyDaysInBlocks);
-      }
-      
       // Set time range based on timeframe parameter
       let startDate, endDate;
       const now = new Date();
       
       if (timeframe === '2023') {
         // Use 2023 data for testing
-        startDate = new Date('2023-01-01T00:00:00Z');
+        startDate = new Date('2023-08-01T00:00:00Z'); // Base launched in July 2023
         endDate = new Date('2023-12-31T23:59:59Z');
-      } else {
-        // Default to last 90 days
+      } else if (timeframe === '90days') {
+        // Last 90 days
         startDate = new Date(now);
         startDate.setDate(now.getDate() - 90);
         endDate = now;
+      } else {
+        // Default to last 30 days
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - 30);
+        endDate = now;
       }
       
-      console.log(`Fetching transactions from ${startDate.toISOString()} to ${endDate.toISOString()}`);
-      
-      // Fetch native ETH transactions
-      console.log('Fetching native ETH transactions...');
+      console.log(`Analyzing transactions from ${startDate.toISOString()} to ${endDate.toISOString()}`);
       
       // Track counterparties and their transaction counts
       const counterpartyMap = new Map();
       
       try {
-        // Get transactions where the wallet is the sender
-        const sentTransactions = await fetchTransactions(client, address, 'from', startDate, endDate);
-        console.log(`Found ${sentTransactions.length} outgoing transactions`);
+        // Fetch transactions using Alchemy
+        console.log('Fetching transactions from Alchemy...');
         
-        // Process sent transactions
-        for (const tx of sentTransactions) {
-          const counterpartyAddress = tx.to;
+        // Get all transactions for the address (both sent and received)
+        const assetTransfers = await alchemy.core.getAssetTransfers({
+          fromBlock: "0x0",
+          toBlock: "latest",
+          fromAddress: address,
+          category: ["external", "internal", "erc20", "erc721", "erc1155"],
+          maxCount: 100, // Limit to 100 transactions for performance
+        });
+        
+        console.log(`Found ${assetTransfers.transfers.length} outgoing transfers`);
+        
+        // Process outgoing transfers
+        for (const transfer of assetTransfers.transfers) {
+          if (!transfer.to) continue; // Skip if no recipient
+          
+          const counterpartyAddress = transfer.to.toLowerCase();
           
           if (!counterpartyMap.has(counterpartyAddress)) {
             counterpartyMap.set(counterpartyAddress, {
               address: counterpartyAddress,
               transactionCount: 0,
-              type: 'unknown',
+              sentCount: 0,
+              receivedCount: 0,
               totalValueSent: 0,
               totalValueReceived: 0,
+              // Check if this is a known protocol or exchange
+              ...(KNOWN_ADDRESSES[counterpartyAddress] || {
+                type: 'unknown', // Will be updated later
+              }),
             });
           }
           
           const counterparty = counterpartyMap.get(counterpartyAddress);
           counterparty.transactionCount += 1;
-          counterparty.totalValueSent += Number(tx.value) / 1e18; // Convert from wei to ETH
+          counterparty.sentCount += 1;
+          counterparty.totalValueSent += parseFloat(transfer.value) || 0;
         }
         
-        // Get transactions where the wallet is the receiver
-        const receivedTransactions = await fetchTransactions(client, address, 'to', startDate, endDate);
-        console.log(`Found ${receivedTransactions.length} incoming transactions`);
+        // Get incoming transfers
+        const incomingTransfers = await alchemy.core.getAssetTransfers({
+          fromBlock: "0x0",
+          toBlock: "latest",
+          toAddress: address,
+          category: ["external", "internal", "erc20", "erc721", "erc1155"],
+          maxCount: 100, // Limit to 100 transactions for performance
+        });
         
-        // Process received transactions
-        for (const tx of receivedTransactions) {
-          const counterpartyAddress = tx.from;
+        console.log(`Found ${incomingTransfers.transfers.length} incoming transfers`);
+        
+        // Process incoming transfers
+        for (const transfer of incomingTransfers.transfers) {
+          if (!transfer.from) continue; // Skip if no sender
+          
+          const counterpartyAddress = transfer.from.toLowerCase();
           
           if (!counterpartyMap.has(counterpartyAddress)) {
             counterpartyMap.set(counterpartyAddress, {
               address: counterpartyAddress,
               transactionCount: 0,
-              type: 'unknown',
+              sentCount: 0,
+              receivedCount: 0,
               totalValueSent: 0,
               totalValueReceived: 0,
+              // Check if this is a known protocol or exchange
+              ...(KNOWN_ADDRESSES[counterpartyAddress] || {
+                type: 'unknown', // Will be updated later
+              }),
             });
           }
           
           const counterparty = counterpartyMap.get(counterpartyAddress);
           counterparty.transactionCount += 1;
-          counterparty.totalValueReceived += Number(tx.value) / 1e18; // Convert from wei to ETH
+          counterparty.receivedCount += 1;
+          counterparty.totalValueReceived += parseFloat(transfer.value) || 0;
+        }
+        
+        // For any counterparties with unknown type, determine if they're contracts
+        const unknownCounterparties = Array.from(counterpartyMap.values())
+          .filter(cp => cp.type === 'unknown')
+          .map(cp => cp.address);
+        
+        if (unknownCounterparties.length > 0) {
+          console.log(`Checking contract status for ${unknownCounterparties.length} addresses...`);
+          
+          // Check contract status in batches to avoid rate limits
+          const batchSize = 10;
+          for (let i = 0; i < unknownCounterparties.length; i += batchSize) {
+            const batch = unknownCounterparties.slice(i, i + batchSize);
+            const promises = batch.map(address => 
+              alchemy.core.isContractAddress(address)
+                .then(isContract => ({ address, isContract }))
+                .catch(() => ({ address, isContract: false })) // Default to false on error
+            );
+            
+            const results = await Promise.all(promises);
+            
+            for (const { address, isContract } of results) {
+              const counterparty = counterpartyMap.get(address);
+              if (counterparty) {
+                counterparty.type = isContract ? 'contract' : 'wallet';
+              }
+            }
+          }
         }
       } catch (txError) {
-        console.error('Error fetching transactions:', txError);
-      }
-      
-      // If we found no transactions, fall back to mock data
-      if (counterpartyMap.size === 0) {
-        console.log('No transactions found, using mock data');
-        return generateMockAnalysis(address, res);
+        console.error('Error processing transactions:', txError);
+        // Continue with any data we have so far
       }
       
       // Convert map to array and identify known protocols
@@ -192,30 +258,7 @@ export default async function handler(req, res) {
   }
 }
 
-// Helper function to fetch transactions
-async function fetchTransactions(client, address, direction, fromTimestamp, toTimestamp) {
-  try {
-    // Convert timestamps to block numbers
-    // This is an approximation - Base produces blocks every 2 seconds on average
-    const fromBlock = BigInt(Math.max(0, Math.floor((fromTimestamp - 1672531200) / 2) + 1)); // Base launched Jan 1, 2023
-    const toBlock = 'latest';
-    
-    console.log(`Querying transactions with ${direction}=${address} from block ${fromBlock} to ${toBlock}`);
-    
-    // Since viem doesn't have a direct getTransactions method, we'll use getBlock and filter
-    // This is a simplified implementation - in production, you would use a more efficient approach
-    // such as querying an indexer or using a service like Etherscan
-    
-    // For now, we'll return an empty array since this is just for testing
-    // In a real implementation, you would need to fetch blocks and filter transactions
-    console.log('Note: viem does not provide a direct getTransactions method. In production, use an indexer or API service.');
-    
-    return [];
-  } catch (error) {
-    console.error(`Error fetching ${direction} transactions:`, error);
-    return [];
-  }
-}
+// This function is no longer needed as we're using Alchemy's getAssetTransfers
 
 // Helper function to generate mock data
 async function generateMockAnalysis(address, res) {
